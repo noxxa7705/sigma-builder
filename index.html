@@ -272,10 +272,11 @@
       </div>
 
       <!-- ══ TAGS ══════════════════════════════════════════════════════════ -->
-      <div v-show="activeTab === 'tags'" class="tab-content">
+      <div v-show="activeTab === 'tags'" class="tab-content tags-tab">
 
+        <!-- Custom tags list (keep as-is) -->
         <div class="field-group">
-          <label>Custom Tags</label>
+          <label>Rule Tags</label>
           <div v-for="(tag, i) in rule.tags" :key="i" class="list-row">
             <input v-model="rule.tags[i]" class="inp mono-inp" placeholder="attack.t1059.001" />
             <button class="btn-icon danger" @click="removeTag(i)">×</button>
@@ -285,18 +286,65 @@
 
         <div class="separator"></div>
 
-        <div class="field-group">
-          <label>MITRE ATT&amp;CK Quick-Select</label>
-          <input v-model="tagSearch" class="inp" placeholder="Search T-ID or technique name…" />
+        <!-- Matrix header -->
+        <div class="matrix-header">
+          <span class="label-xs mono">MITRE ATT&amp;CK ENTERPRISE — v14.1</span>
+          <div class="matrix-controls">
+            <input v-model="matrixSearch" class="inp matrix-search-inp" placeholder="Search techniques…" />
+            <button class="btn-tool small" @click="matrixShowSubs = !matrixShowSubs">
+              {{ matrixShowSubs ? '▾ hide subs' : '▸ show subs' }}
+            </button>
+            <button class="btn-tool small" @click="clearAllTags" v-if="selectedTechIds.size > 0">
+              clear ({{ selectedTechIds.size }})
+            </button>
+          </div>
         </div>
 
-        <div class="mitre-grid">
-          <button v-for="t in filteredMitre" :key="t.id"
-                  class="mitre-btn" :class="{ selected: hasTag(t.id) }"
-                  @click="toggleMitreTag(t.id)" :title="t.name">
-            <span class="mitre-id">{{ t.id }}</span>
-            <span class="mitre-name">{{ t.name }}</span>
-          </button>
+        <!-- The matrix itself -->
+        <div class="attack-matrix-wrap">
+          <div class="attack-matrix">
+            <!-- Tactic header row -->
+            <div class="matrix-tactic-header" v-for="tac in matrixTactics" :key="tac.id">
+              <span class="tactic-label">{{ tac.label }}</span>
+              <span class="tactic-count">{{ tac.visibleCount }}</span>
+            </div>
+            <!-- Technique columns -->
+            <div class="matrix-column" v-for="tac in matrixTactics" :key="'col-'+tac.id">
+              <template v-for="tech in tac.techniques" :key="tech.id">
+                <!-- Parent technique cell -->
+                <div class="matrix-cell"
+                     :class="{
+                       selected: isSelected(tech.id),
+                       'has-subs': tech.subs.length > 0,
+                       'sub-expanded': expandedTechs.has(tech.id),
+                       'search-match': matrixSearch && techMatchesSearch(tech),
+                       'search-miss':  matrixSearch && !techMatchesSearch(tech) && !anySubMatches(tech),
+                     }"
+                     @click.stop="toggleTechCell(tech)">
+                  <span class="cell-id">{{ tech.id }}</span>
+                  <span class="cell-name">{{ tech.name }}</span>
+                  <span v-if="tech.subs.length" class="cell-sub-toggle"
+                        @click.stop="toggleExpand(tech.id)">
+                    {{ expandedTechs.has(tech.id) ? '▾' : '▸' }} {{ tech.subs.length }}
+                  </span>
+                </div>
+                <!-- Sub-technique cells (shown when expanded or show-subs mode) -->
+                <template v-if="matrixShowSubs || expandedTechs.has(tech.id)">
+                  <div v-for="sub in tech.subs" :key="sub.id"
+                       class="matrix-cell matrix-sub-cell"
+                       :class="{
+                         selected: isSelected(sub.id),
+                         'search-match': matrixSearch && subMatchesSearch(sub),
+                         'search-miss':  matrixSearch && !subMatchesSearch(sub),
+                       }"
+                       @click="toggleSubCell(sub, tech)">
+                    <span class="cell-id">{{ sub.id }}</span>
+                    <span class="cell-name">{{ sub.name }}</span>
+                  </div>
+                </template>
+              </template>
+            </div>
+          </div>
         </div>
 
       </div>
@@ -485,6 +533,7 @@
 
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+<script src="js/attack-matrix.js"></script>
 <script src="js/sigma-data.js"></script>
 <script src="js/app.js"></script>
 </body>

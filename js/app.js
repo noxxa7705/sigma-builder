@@ -347,6 +347,81 @@ createApp({
     function addCustomTag()   { rule.tags.push(''); }
     function removeTag(idx)   { rule.tags.splice(idx, 1); }
 
+    // ── ATT&CK matrix state ────────────────────────────────────────────────
+    const matrixSearch   = ref('');
+    const matrixShowSubs = ref(false);
+    const expandedTechs  = ref(new Set());
+
+    function techMatchesSearch(tech) {
+      const q = matrixSearch.value.toLowerCase();
+      if (!q) return true;
+      return tech.id.toLowerCase().includes(q) || tech.name.toLowerCase().includes(q);
+    }
+    function subMatchesSearch(sub) {
+      const q = matrixSearch.value.toLowerCase();
+      if (!q) return true;
+      return sub.id.toLowerCase().includes(q) || sub.name.toLowerCase().includes(q);
+    }
+    function anySubMatches(tech) {
+      if (!matrixSearch.value) return false;
+      return tech.subs.some(s => subMatchesSearch(s));
+    }
+
+    // Build the tactic columns from window.ATTACK_MATRIX
+    const matrixTactics = computed(() => {
+      const M = window.ATTACK_MATRIX;
+      if (!M) return [];
+      const q = matrixSearch.value.toLowerCase();
+      return M.tacticOrder.map(tacId => {
+        const techs = M.tactics[tacId] || [];
+        const filtered = q
+          ? techs.filter(t => techMatchesSearch(t) || anySubMatches(t))
+          : techs;
+        return {
+          id: tacId,
+          label: M.tacticLabels[tacId],
+          techniques: filtered,
+          visibleCount: filtered.length,
+        };
+      });
+    });
+
+    // Set of currently selected technique IDs (derived from rule.tags)
+    const selectedTechIds = computed(() => {
+      const s = new Set();
+      rule.tags.forEach(tag => {
+        const m = tag.match(/^attack\.(t\d+(?:\.\d+)?)$/i);
+        if (m) s.add(m[1].toUpperCase());
+      });
+      return s;
+    });
+
+    function isSelected(id)  { return selectedTechIds.value.has(id.toUpperCase()); }
+
+    function toggleTechCell(tech) {
+      const tag = `attack.${tech.id.toLowerCase()}`;
+      const idx = rule.tags.indexOf(tag);
+      if (idx >= 0) rule.tags.splice(idx, 1);
+      else rule.tags.push(tag);
+    }
+    function toggleSubCell(sub) {
+      const tag = `attack.${sub.id.toLowerCase()}`;
+      const idx = rule.tags.indexOf(tag);
+      if (idx >= 0) rule.tags.splice(idx, 1);
+      else rule.tags.push(tag);
+    }
+    function toggleExpand(techId) {
+      const s = new Set(expandedTechs.value);
+      if (s.has(techId)) s.delete(techId);
+      else s.add(techId);
+      expandedTechs.value = s;
+    }
+    function clearAllTags() {
+      // Remove only attack.tXXXX tags
+      const keep = rule.tags.filter(t => !/^attack\.t\d+/i.test(t));
+      rule.tags.splice(0, rule.tags.length, ...keep);
+    }
+
     // ── list helpers ───────────────────────────────────────────────────────
     function addListItem(arr)        { arr.push(''); }
     function removeListItem(arr, idx){ if (arr.length > 1) arr.splice(idx, 1); }
@@ -514,6 +589,9 @@ createApp({
       addGroup, removeGroup, addField, removeField,
       addValue, removeValue, addKeyword, removeKeyword, setConditionTemplate,
       tagSearch, filteredMitre, toggleMitreTag, hasTag, addCustomTag, removeTag,
+      matrixSearch, matrixShowSubs, expandedTechs, matrixTactics, selectedTechIds,
+      isSelected, techMatchesSearch, subMatchesSearch, anySubMatches,
+      toggleTechCell, toggleSubCell, toggleExpand, clearAllTags,
       addListItem, removeListItem,
       githubToken, showSettings, saveToken,
       showBrowser, browserSearch, activeCatId,

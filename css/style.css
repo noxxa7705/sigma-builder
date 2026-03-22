@@ -292,26 +292,168 @@ select.level-critical       { color: var(--lvl-critical); }
 .btn-cond-tpl:hover { color: var(--text); border-color: var(--border-focus); }
 .btn-cond-tpl.active { background: var(--bg-2); color: var(--white); border-color: var(--white); }
 
-/* ── MITRE TAGS ──────────────────────────────────────────── */
+/* ── TAGS TAB ────────────────────────────────────────────── */
 
-.mitre-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 0.35rem; max-height: 400px; overflow-y: auto; padding: 0.5rem 0;
+.tags-tab {
+  gap: 0.75rem;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 0;
 }
-.mitre-btn {
-  display: flex; flex-direction: column; align-items: flex-start;
-  padding: 0.5rem 0.75rem; background: var(--bg-2); border: 1px solid var(--border);
-  border-radius: var(--r-sm); cursor: pointer; text-align: left;
-  transition: background 0.12s, border-color 0.12s; gap: 1px;
+
+.matrix-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  flex-shrink: 0;
 }
-.mitre-btn:hover { background: var(--bg-3); border-color: var(--border-focus); }
-.mitre-btn.selected { background: rgba(226,226,226,0.05); border-color: var(--text); }
-.mitre-id { font-family: var(--font-mono); font-size: 0.65rem; color: var(--text); }
-.mitre-name {
-  font-size: 0.7rem; color: var(--text-muted);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px;
+
+.matrix-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
-.mitre-btn.selected .mitre-name { color: var(--text); }
+
+.matrix-search-inp {
+  width: 200px;
+}
+
+/* ── ATTACK MATRIX ───────────────────────────────────────── */
+
+.attack-matrix-wrap {
+  flex: 1;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  min-height: 0;
+}
+
+.attack-matrix {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  /* 14 tactic columns */
+  grid-template-columns: repeat(14, minmax(130px, 1fr));
+  min-width: 1820px;
+}
+
+/* Tactic header cells — row 1 */
+.matrix-tactic-header {
+  grid-row: 1;
+  background: var(--bg-2);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 0.5rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.matrix-tactic-header:last-child { border-right: none; }
+
+.tactic-label {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--white);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tactic-count {
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  color: var(--text-muted);
+}
+
+/* Technique columns — row 2 */
+.matrix-column {
+  grid-row: 2;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  align-content: start;
+}
+.matrix-column:last-child { border-right: none; }
+
+/* Individual technique cells */
+.matrix-cell {
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 6px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  transition: background 0.1s, border-color 0.1s;
+  position: relative;
+  user-select: none;
+}
+.matrix-cell:hover {
+  background: var(--bg-2);
+  border-color: var(--border-focus);
+}
+.matrix-cell.selected {
+  background: rgba(226,226,226,0.08);
+  border-color: var(--white);
+}
+.matrix-cell.selected .cell-id { color: var(--white); }
+.matrix-cell.search-miss {
+  opacity: 0.2;
+}
+.matrix-cell.search-match {
+  border-color: var(--info);
+}
+.matrix-cell.selected.search-match {
+  border-color: var(--white);
+}
+
+/* Sub-technique cells */
+.matrix-sub-cell {
+  margin-left: 10px;
+  background: var(--bg-2);
+  border-color: var(--border-soft);
+}
+.matrix-sub-cell::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  width: 6px;
+  height: 1px;
+  background: var(--border);
+}
+.matrix-sub-cell:hover { background: var(--bg-3); }
+.matrix-sub-cell.selected { background: rgba(226,226,226,0.06); border-color: var(--white); }
+
+.cell-id {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+.cell-name {
+  font-size: 0.68rem;
+  color: var(--text);
+  line-height: 1.3;
+}
+.cell-sub-toggle {
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  align-self: flex-end;
+}
 
 /* ── LIVE PREVIEW PANEL ──────────────────────────────────── */
 
