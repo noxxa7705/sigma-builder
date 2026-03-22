@@ -246,6 +246,68 @@ async function fetchRuleRaw(path, githubToken) {
   return resp.text();
 }
 
+// ── Shareable URL helpers ─────────────────────────────────────────────────────
+
+function ruleToUrlHash(rule) {
+  // Serialize the rule to minimal JSON, base64url-encode it
+  // Use JSON.stringify on a clean plain object (not reactive proxy)
+  const plain = JSON.parse(JSON.stringify(rule));
+  const json = JSON.stringify(plain);
+  // btoa doesn't handle unicode — use encodeURIComponent trick
+  const b64 = btoa(unescape(encodeURIComponent(json)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return '#rule=' + b64;
+}
+
+function ruleFromUrlHash(hash) {
+  // Returns parsed plain object or null
+  try {
+    const match = hash.match(/[#&]rule=([A-Za-z0-9_-]+)/);
+    if (!match) return null;
+    const b64 = match[1].replace(/-/g, '+').replace(/_/g, '/');
+    const json = decodeURIComponent(escape(atob(b64)));
+    return JSON.parse(json);
+  } catch(e) { return null; }
+}
+
+// ── Local Rule Library ────────────────────────────────────────────────────────
+
+const LIBRARY_KEY = 'sigma_rule_library';
+
+function libraryLoad() {
+  try { return JSON.parse(localStorage.getItem(LIBRARY_KEY) || '[]'); }
+  catch(e) { return []; }
+}
+
+function librarySave(entries) {
+  localStorage.setItem(LIBRARY_KEY, JSON.stringify(entries));
+}
+
+function libraryUpsert(ruleObj) {
+  const entries = libraryLoad();
+  const idx = entries.findIndex(e => e.id === ruleObj.id);
+  const entry = {
+    id: ruleObj.id,
+    title: ruleObj.title || 'Untitled',
+    level: ruleObj.level || 'medium',
+    status: ruleObj.status || 'experimental',
+    tags: ruleObj.tags || [],
+    logsource: ruleObj.logsource || {},
+    savedAt: new Date().toISOString(),
+    rule: JSON.parse(JSON.stringify(ruleObj)),
+  };
+  if (idx >= 0) entries[idx] = entry;
+  else entries.unshift(entry);
+  librarySave(entries);
+  return entries;
+}
+
+function libraryDelete(id) {
+  const entries = libraryLoad().filter(e => e.id !== id);
+  librarySave(entries);
+  return entries;
+}
+
 // ── Vue app ───────────────────────────────────────────────────────────────────
 
 createApp({
@@ -254,6 +316,33 @@ createApp({
 
     // ── core state ─────────────────────────────────────────────────────────
     const rule = reactive(emptyRule());
+
+    // ── Load from URL hash on startup ──────────────────────────────────────
+    (function() {
+      const obj = ruleFromUrlHash(window.location.hash);
+      if (obj) {
+        const loaded = ruleFromParsed(obj) || obj;
+        Object.assign(rule, loaded);
+        // Clean the hash without triggering a page reload
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+        // notify will be called after notify is defined — defer it
+        setTimeout(() => notify('Rule loaded from shared link'), 0);
+      }
+    })();
+
+    // ── Watch rule changes — update URL hash live (throttled 600ms) ────────
+    let _hashUpdateTimer = null;
+    watch(
+      () => JSON.stringify(rule),
+      () => {
+        clearTimeout(_hashUpdateTimer);
+        _hashUpdateTimer = setTimeout(() => {
+          history.replaceState(null, '', ruleToUrlHash(rule));
+        }, 600);
+      },
+      { deep: true }
+    );
+
     const activeTab = ref('metadata');
     const yamlOutput = computed(() => buildYaml(rule));
     const lint = computed(() => lintRule(rule));
@@ -568,6 +657,12 @@ createApp({
       copied.value = true;
       setTimeout(() => copied.value = false, 2000);
       notify('✓ Copied to clipboard');
+    }
+
+    // ── share link ────────────────────────────────────────────────────────────
+    function copyShareLink() {
+      const url = window.location.origin + window.location.pathname + ruleToUrlHash(rule);
+      navigator.clipboard.writeText(url).then(() => notify('Share link copied!'));
     }
 
     // ── new / reset ────────────────────────────────────────────────────────────
@@ -1117,6 +1212,112 @@ createApp({
       return segs;
     });
 
+    // ── Rule Library ───────────────────────────────────────────────────────────
+    const showLibrary     = ref(false);
+    const libraryEntries  = ref(libraryLoad());
+    const librarySearch   = ref('');
+
+    const libraryFiltered = computed(() => {
+      const q = librarySearch.value.toLowerCase();
+      if (!q) return libraryEntries.value;
+      return libraryEntries.value.filter(e =>
+        e.title.toLowerCase().includes(q) ||
+        (e.logsource?.product || '').toLowerCase().includes(q) ||
+        e.tags.some(t => t.toLowerCase().includes(q))
+      );
+    });
+
+    function applyParsedRule(ruleReactive, obj) {
+      const loaded = ruleFromParsed(obj);
+      if (!loaded) return;
+      Object.assign(ruleReactive, loaded);
+      syncPresetFromLogsource();
+      activeTab.value = 'metadata';
+    }
+
+    function libSave() {
+      libraryEntries.value = libraryUpsert(JSON.parse(JSON.stringify(rule)));
+      notify('Rule saved to library');
+    }
+
+    function libLoad(entry) {
+      applyParsedRule(rule, entry.rule);
+      showLibrary.value = false;
+      notify(`Loaded: ${entry.title}`);
+    }
+
+    function libDuplicate(entry) {
+      const copy = JSON.parse(JSON.stringify(entry.rule));
+      copy.id = uuid4();
+      copy.title = copy.title + ' (copy)';
+      copy.date = todayStr();
+      libraryEntries.value = libraryUpsert(copy);
+      notify('Duplicated — loading copy');
+      applyParsedRule(rule, copy);
+      showLibrary.value = false;
+    }
+
+    function libDelete(id) {
+      if (!confirm('Delete this rule from the library?')) return;
+      libraryEntries.value = libraryDelete(id);
+      notify('Deleted from library');
+    }
+
+    function levelColor(level) {
+      const map = { informational: '#60a5fa', low: '#4ade80', medium: '#facc15', high: '#fb923c', critical: '#f87171' };
+      return map[level] || '#555';
+    }
+
+    function formatRelativeTime(iso) {
+      const ms = Date.now() - new Date(iso).getTime();
+      const min = Math.floor(ms / 60000);
+      if (min < 1) return 'just now';
+      if (min < 60) return `${min}m ago`;
+      const h = Math.floor(min / 60);
+      if (h < 24) return `${h}h ago`;
+      const d = Math.floor(h / 24);
+      return `${d}d ago`;
+    }
+
+    // Auto-save watcher — only updates entries already in the library
+    let _libAutoSaveTimer = null;
+    watch(
+      () => JSON.stringify(rule),
+      () => {
+        clearTimeout(_libAutoSaveTimer);
+        _libAutoSaveTimer = setTimeout(() => {
+          const exists = libraryEntries.value.some(e => e.id === rule.id);
+          if (exists) libraryEntries.value = libraryUpsert(JSON.parse(JSON.stringify(rule)));
+        }, 1500);
+      },
+      { deep: true }
+    );
+
+    // ── Query Converter ──────────────────────────────────────────────────────
+
+    const converterTarget = ref('spl');
+
+    const converterResult = computed(() => {
+      if (typeof SigmaConverter === 'undefined') return null;
+      try { return SigmaConverter.convert(JSON.parse(JSON.stringify(rule))); }
+      catch(e) { return null; }
+    });
+
+    const converterOutput = computed(() => {
+      if (!converterResult.value) return '// Converter unavailable';
+      return converterResult.value[converterTarget.value]?.query || '// No output';
+    });
+
+    const converterNote = computed(() => {
+      if (!converterResult.value) return '';
+      return converterResult.value[converterTarget.value]?.note || '';
+    });
+
+    function copyConverterOutput() {
+      navigator.clipboard.writeText(converterOutput.value)
+        .then(() => notify('Query copied!'));
+    }
+
     // Simple markdown renderer (bold, italic, code, line breaks — no full parser needed)
     function renderMarkdown(text) {
       if (!text) return '';
@@ -1153,7 +1354,7 @@ createApp({
       selectCategory, loadCommunityRule,
       showTemplates, templateLoading, templateError, loadPinnedTemplate,
       showImport, importText, importError, doImport,
-      copied, exportRule, copyYaml,
+      copied, exportRule, copyYaml, copyShareLink,
       newRule, regenId, openWizard,
       wizard, wizardScenarios, wizardFilteredLogsources, wizardPreviewYaml,
       wizardNext, wizardStart, wizardAiDescribe, wizardAiLogsource,
@@ -1170,6 +1371,10 @@ createApp({
       hasAiTag, acceptAiTag, acceptAllAiTags,
       acceptFP, acceptAllFPs, scoreClass,
       annotatedYamlSegments, renderMarkdown,
+      showLibrary, libraryEntries, librarySearch, libraryFiltered,
+      libSave, libLoad, libDuplicate, libDelete,
+      levelColor, formatRelativeTime,
+      converterTarget, converterOutput, converterNote, copyConverterOutput,
     };
   }
 }).mount('#app');

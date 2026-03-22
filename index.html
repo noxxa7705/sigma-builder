@@ -57,7 +57,10 @@
       <div class="toolbar-right">
         <button class="btn-tool" @click="showBrowser = true">⊞ community</button>
         <button class="btn-tool" @click="showTemplates = true">⊙ templates</button>
+        <button class="btn-tool" @click="showLibrary = true">⊕ library</button>
+        <button class="btn-tool" data-keep @click="libSave" title="Save current rule to local library">⊙ save</button>
         <button class="btn-tool" @click="showImport = true">↑ import</button>
+        <button class="btn-tool" @click="copyShareLink" title="Copy shareable link to this rule">⎋ share</button>
         <button class="btn-tool" data-keep @click="openWizard">+ new</button>
         <button class="btn-tool" data-keep @click="showSettings = true">⚙</button>
         <button class="btn-tool accent" @click="exportRule">↓ export .yml</button>
@@ -563,6 +566,27 @@
 
         <pre class="yaml-preview" @contextmenu="ctxYamlPreview($event)">{{ yamlOutput }}</pre>
 
+        <!-- ── Converter ─────────────────────────────────────────── -->
+        <div class="converter-panel">
+          <div class="converter-header">
+            <span class="mono label-xs">QUERY CONVERTER</span>
+            <span class="hint-text" style="font-size:0.7rem">Best-effort — always review before use</span>
+          </div>
+          <!-- Target selector -->
+          <div class="converter-tabs">
+            <button v-for="t in ['spl','kql','eql']" :key="t"
+                    class="btn-conv-tab" :class="{ active: converterTarget === t }"
+                    @click="converterTarget = t">{{ t.toUpperCase() }}</button>
+          </div>
+          <!-- Output -->
+          <div class="converter-output-wrap">
+            <pre class="converter-output">{{ converterOutput }}</pre>
+            <button class="btn-copy-conv" @click="copyConverterOutput" title="Copy to clipboard">copy</button>
+          </div>
+          <!-- Note if present -->
+          <p v-if="converterNote" class="converter-note">⚠ {{ converterNote }}</p>
+        </div>
+
       </div>
     </div>
 
@@ -892,6 +916,51 @@
     </div>
   </div>
 
+  <!-- ══ MODAL: RULE LIBRARY ══════════════════════════════════════════════ -->
+  <div class="modal-overlay" v-if="showLibrary" @click.self="showLibrary = false">
+    <div class="modal modal-library">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <span class="modal-title">⊕ Rule Library</span>
+          <span class="modal-link">{{ libraryEntries.length }} saved</span>
+        </div>
+        <button class="btn-icon" @click="showLibrary = false">×</button>
+      </div>
+      <div class="modal-body" style="padding-top:0.75rem">
+        <!-- Search -->
+        <input v-model="librarySearch" class="inp" placeholder="Search rules…" style="margin-bottom:0.75rem" />
+        <!-- Empty state -->
+        <div v-if="!libraryEntries.length" class="lib-empty">
+          <p>No saved rules yet.</p>
+          <p class="hint-text">Click <strong>⊙ save</strong> in the toolbar to save the current rule.</p>
+        </div>
+        <!-- No search results -->
+        <div v-else-if="!libraryFiltered.length" class="lib-empty">
+          <p class="hint-text">No rules match your search.</p>
+        </div>
+        <!-- Rule list -->
+        <div v-else class="lib-list">
+          <div v-for="entry in libraryFiltered" :key="entry.id" class="lib-entry">
+            <div class="lib-entry-header" @click="libLoad(entry)">
+              <span class="lib-level-badge" :style="{ '--lc': levelColor(entry.level) }">{{ entry.level }}</span>
+              <span class="lib-title">{{ entry.title || 'Untitled' }}</span>
+            </div>
+            <div class="lib-entry-meta">
+              <span class="hint">{{ entry.logsource?.product || entry.logsource?.category || '—' }}</span>
+              <span class="hint">{{ entry.tags.slice(0,2).join(' · ') }}</span>
+              <span class="hint lib-date">{{ formatRelativeTime(entry.savedAt) }}</span>
+            </div>
+            <div class="lib-entry-actions">
+              <button class="btn-tool small" @click="libLoad(entry)">load</button>
+              <button class="btn-tool small" @click="libDuplicate(entry)">duplicate</button>
+              <button class="btn-tool small danger" @click="libDelete(entry.id)">delete</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ══ CONTEXT MENU ══ -->
   <Teleport to="body">
     <div v-if="ctxMenu.visible" class="ctx-overlay" @click="hideCtxMenu" @contextmenu.prevent="hideCtxMenu"></div>
@@ -920,6 +989,7 @@
 <script src="js/attack-matrix.js"></script>
 <script src="js/sigma-data.js"></script>
 <script src="js/ai.js"></script>
+<script src="js/converter.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
