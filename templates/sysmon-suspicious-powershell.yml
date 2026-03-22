@@ -1,0 +1,36 @@
+title: Suspicious PowerShell Encoded Command Execution
+id: a2a41f76-9e11-4c5b-b59e-2f0c4d1a6e22
+status: experimental
+description: Detects PowerShell execution with encoded command flags, commonly used
+  to obfuscate malicious payloads delivered via phishing or LOLBins.
+references:
+  - https://attack.mitre.org/techniques/T1059/001/
+  - https://lolbas-project.github.io/lolbas/Binaries/Powershell/
+author: noxxa
+date: 2025-01-01
+tags:
+  - attack.execution
+  - attack.t1059.001
+  - attack.defense_evasion
+  - attack.t1027
+logsource:
+  category: process_creation
+  product: windows
+  service: sysmon
+detection:
+  selection:
+    Image|endswith:
+      - '\powershell.exe'
+      - '\pwsh.exe'
+    CommandLine|contains|all:
+      - '-enc'
+      - ' '
+  filter:
+    CommandLine|contains:
+      - 'WindowsUpdate'
+      - 'MicrosoftEdge'
+  condition: selection and not filter
+falsepositives:
+  - Legitimate administrative scripts using encoded commands
+  - Software installers
+level: medium

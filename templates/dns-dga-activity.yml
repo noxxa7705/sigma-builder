@@ -1,0 +1,96 @@
+title: Potential Domain Generation Algorithm (DGA) Activity Detected via DNS
+id: 2d7b5f9e-4a1c-4d6b-8e3f-0c9a2b7d4e1f
+status: experimental
+description: |
+  Detects potential Domain Generation Algorithm (DGA) activity by identifying DNS queries with
+  characteristics consistent with algorithmically generated domain names. DGAs are used by malware
+  families (e.g., Conficker, CryptoLocker, Locky, Dridex) to generate large numbers of candidate
+  C2 domain names, making blocklist-based defenses less effective. Indicators include: unusually
+  long subdomain labels, high-entropy (seemingly random) domain names, domains with excessive
+  consonant clusters, and NXDomain responses at high rates. This rule targets the query patterns
+  themselves rather than known-bad domains.
+references:
+  - https://attack.mitre.org/techniques/T1568/002/
+  - https://unit42.paloaltonetworks.com/dga-threats/
+  - https://www.netlab360.com/dga-c2/
+  - https://github.com/SigmaHQ/sigma/blob/master/rules/network/dns/net_dns_susp_query_dga_like.yml
+author: noxxa
+date: 2026-03-22
+modified: 2026-03-22
+tags:
+  - attack.command_and_control
+  - attack.t1568.002
+logsource:
+  category: dns
+detection:
+  # Group 1: Long single-label subdomain indicative of DGA
+  selection_long_subdomain:
+    dns.question.name|re: '^[a-z0-9]{15,}\.(com|net|org|info|biz|xyz|top|club|online|site|pw|cc|tk|ml|ga|cf)$'
+
+  # Group 2: High consonant ratio / random-looking hostnames (no vowels or very few)
+  selection_consonant_heavy:
+    dns.question.name|re: '^[b-df-hj-np-tv-z]{5,}[0-9]{0,3}[b-df-hj-np-tv-z]{3,}\.'
+
+  # Group 3: Excessive numeric interspersed with letters (low dictionary-word probability)
+  selection_numeric_mixed:
+    dns.question.name|re: '^(?=.*[0-9])(?=.*[a-z])[a-z0-9]{12,}\.(com|net|org|info|biz|top|xyz|pw|cc)$'
+
+  # Group 4: Multiple subdomain levels with random-looking labels
+  selection_multilevel_random:
+    dns.question.name|re: '^[a-z0-9]{8,}\.[a-z0-9]{6,}\.[a-z0-9]{4,}\.'
+
+  # Group 5: Known DGA-associated TLDs with suspicious patterns
+  selection_dga_tlds:
+    dns.question.name|endswith:
+      - '.bit'
+      - '.onion'
+      - '.coin'
+      - '.bazar'
+      - '.lib'
+      - '.emc'
+    dns.question.name|re: '^[a-z0-9]{8,}\.'
+
+  # Group 6: High NXDOMAIN response rate indicator (field present in some DNS log schemas)
+  selection_nxdomain:
+    dns.response_code: 'NXDOMAIN'
+    dns.question.name|re: '^[a-z0-9]{10,}\.(com|net|org|info|biz|xyz|top)$'
+
+  # Filter: Known legitimate long-domain services
+  filter_known_legit:
+    dns.question.name|endswith:
+      - '.azurewebsites.net'
+      - '.cloudfront.net'
+      - '.akamaiedge.net'
+      - '.akamaitechnologies.com'
+      - '.amazonaws.com'
+      - '.googleusercontent.com'
+      - '.fastly.net'
+      - '.cdn77.org'
+      - '.edgesuite.net'
+      - '.msecnd.net'
+      - '.trafficmanager.net'
+      - '.windows.net'
+      - '.azureedge.net'
+  filter_known_longnames:
+    dns.question.name|contains:
+      - 'xn--'
+      - 'internationaldomainname'
+
+  condition: >
+    (
+      selection_long_subdomain or
+      selection_consonant_heavy or
+      selection_numeric_mixed or
+      selection_multilevel_random or
+      selection_dga_tlds or
+      selection_nxdomain
+    )
+    and not (filter_known_legit or filter_known_longnames)
+
+falsepositives:
+  - CDN and cloud provider subdomains with long, hash-like names (e.g., Azure blob storage, S3 bucket URLs)
+  - Software update mechanisms using randomly named staging servers
+  - Legitimate internationalized domain names (IDNs) with punycode encoding
+  - Analytics and tracking domains with long unique identifiers
+  - Internal DNS resolvers querying for dynamically generated hostnames
+level: medium

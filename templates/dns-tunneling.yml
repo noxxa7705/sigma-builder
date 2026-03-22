@@ -1,0 +1,121 @@
+title: DNS Tunneling Activity Detected via Query Patterns
+id: f3e8b1d4-7c2a-4f5e-a9b3-8d0c5f2e1a6b
+status: experimental
+description: |
+  Detects DNS tunneling activity used for data exfiltration or covert Command-and-Control (C2)
+  communication. DNS tunneling tools such as iodine, dnscat2, dns2tcp, and DNSExfiltrator encode
+  data inside DNS query and response payloads, often using TXT, NULL, CNAME, or MX record types
+  with unusually long or encoded labels. Detection is based on: excessively long FQDN lengths,
+  high frequency of TXT/NULL record queries, Base32/Base64-encoded subdomain patterns, and
+  known tool-specific query signatures.
+references:
+  - https://attack.mitre.org/techniques/T1071/004/
+  - https://github.com/yarrick/iodine
+  - https://github.com/iagox86/dnscat2
+  - https://www.sans.org/reading-room/whitepapers/dns/detecting-dns-tunneling-34152
+  - https://github.com/SigmaHQ/sigma/blob/master/rules/network/dns/net_dns_susp_txt_query.yml
+author: noxxa
+date: 2026-03-22
+modified: 2026-03-22
+tags:
+  - attack.command_and_control
+  - attack.exfiltration
+  - attack.t1071.004
+logsource:
+  category: dns
+detection:
+  # Group 1: Unusually long DNS query names (tunneling encodes data in labels)
+  selection_long_query:
+    dns.question.name|re: '^.{100,}$'
+
+  # Group 2: Long individual label within the FQDN (max legitimate label is 63 chars)
+  selection_long_label:
+    dns.question.name|re: '(?i)[a-z0-9+/=_-]{45,}\.'
+
+  # Group 3: TXT record queries - primary exfil vector
+  selection_txt_query:
+    dns.question.type: 'TXT'
+    dns.question.name|re: '^[a-z0-9+/=]{20,}\.'
+
+  # Group 4: NULL record queries (iodine uses NULL records)
+  selection_null_query:
+    dns.question.type:
+      - 'NULL'
+      - 'TYPE10'
+
+  # Group 5: Known iodine handshake patterns
+  # iodine uses specific probe sequences with version strings in subdomains
+  selection_iodine:
+    dns.question.name|startswith:
+      - 'aaaaaaaaaaaaaaa'
+      - 'aaaa'
+    dns.question.name|re: '^a{4,}\.'
+  selection_iodine_version:
+    dns.question.name|re: '(?i)^(yi|zi)[0-9a-f]{8,}\.'
+
+  # Group 6: dnscat2 patterns - uses sequential session IDs embedded in queries
+  selection_dnscat2:
+    dns.question.name|re: '(?i)^[0-9a-f]{4}\.[0-9a-f]{4,8}\.'
+    dns.question.type:
+      - 'TXT'
+      - 'CNAME'
+      - 'MX'
+
+  # Group 7: Base32-encoded subdomains (iodine, dns2tcp use Base32)
+  selection_base32_label:
+    dns.question.name|re: '(?i)^[a-z2-7]{30,}\.'
+
+  # Group 8: Base64url-encoded subdomains
+  selection_base64_label:
+    dns.question.name|re: '^[a-zA-Z0-9_-]{40,}\.'
+
+  # Group 9: High volume of MX queries to same domain (less common, some tunneling tools)
+  selection_mx_tunnel:
+    dns.question.type: 'MX'
+    dns.question.name|re: '^[a-z0-9]{15,}\.'
+
+  # Filter: Legitimate long DNS names
+  filter_legitimate_cdns:
+    dns.question.name|endswith:
+      - '.in-addr.arpa'
+      - '.ip6.arpa'
+      - '.akamaitechnologies.com'
+      - '.akamaiedge.net'
+      - '.cloudfront.net'
+      - '.azurewebsites.net'
+      - '.trafficmanager.net'
+      - '.amazonaws.com'
+      - '_dmarc.'
+      - '_domainkey.'
+  filter_spf_dkim:
+    dns.question.type: 'TXT'
+    dns.question.name|contains:
+      - '_dmarc'
+      - '_domainkey'
+      - 'spf'
+      - '_mta-sts'
+      - '_smtp'
+      - 'autodiscover'
+
+  condition: >
+    (
+      selection_long_query or
+      selection_long_label or
+      (selection_txt_query and not filter_spf_dkim) or
+      selection_null_query or
+      selection_iodine or
+      selection_iodine_version or
+      selection_dnscat2 or
+      selection_base32_label or
+      selection_base64_label or
+      selection_mx_tunnel
+    )
+    and not filter_legitimate_cdns
+
+falsepositives:
+  - DKIM and SPF TXT record lookups with long encoded public keys
+  - CDN providers using long subdomains for routing (Akamai, Cloudflare, AWS)
+  - Reverse DNS lookups for IPv6 addresses in ip6.arpa format
+  - Some legitimate email security services use long TXT records
+  - Enterprise applications using DNS for service discovery with long encoded names
+level: high

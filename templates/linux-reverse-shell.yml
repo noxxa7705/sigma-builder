@@ -1,0 +1,176 @@
+title: Linux Reverse Shell Indicators via Process Execution
+id: a4f8c2e1-6b7d-4a3f-9e5c-2d1b8a0f6e4c
+status: experimental
+description: |
+  Detects common reverse shell patterns on Linux systems based on process creation events.
+  Covers well-known techniques including interactive bash/sh spawning with stdio redirection,
+  /dev/tcp bash built-in for socket connections, netcat with execute options, Python/Perl/Ruby
+  one-liners using socket modules, and socat-based reverse shells. These patterns are frequently
+  used post-exploitation to establish interactive remote access from a compromised host.
+references:
+  - https://attack.mitre.org/techniques/T1059/004/
+  - https://pentestmonkey.net/cheat-sheet/shells/reverse-shell-cheat-sheet
+  - https://github.com/SigmaHQ/sigma/blob/master/rules/linux/process_creation/proc_creation_lnx_reverse_shell.yml
+  - https://www.revshells.com/
+author: noxxa
+date: 2026-03-22
+modified: 2026-03-22
+tags:
+  - attack.execution
+  - attack.t1059.004
+logsource:
+  category: process_creation
+  product: linux
+  service: auditd
+detection:
+  # Group 1: Interactive shell spawning with stdio redirection (classic reverse shell)
+  selection_interactive_shell:
+    Image|endswith:
+      - '/bash'
+      - '/sh'
+      - '/zsh'
+      - '/ksh'
+      - '/fish'
+      - '/dash'
+    CommandLine|contains|all:
+      - '-i'
+    CommandLine|contains:
+      - '>&'
+      - '>& '
+      - '0>&1'
+      - '2>&1'
+      - '/dev/tcp'
+      - '/dev/udp'
+
+  # Group 2: Bash /dev/tcp built-in reverse shell
+  selection_dev_tcp:
+    CommandLine|contains:
+      - '/dev/tcp/'
+      - '/dev/udp/'
+    CommandLine|re: '/dev/(tcp|udp)/[0-9a-zA-Z._-]+/[0-9]+'
+
+  # Group 3: Netcat reverse shell variants
+  selection_netcat:
+    Image|endswith:
+      - '/nc'
+      - '/nc.traditional'
+      - '/ncat'
+      - '/netcat'
+    CommandLine|contains:
+      - ' -e '
+      - ' -c '
+      - '--exec'
+      - '--sh-exec'
+    CommandLine|contains:
+      - '/bin/bash'
+      - '/bin/sh'
+      - '/bin/zsh'
+      - 'bash'
+      - 'sh'
+
+  # Group 4: Python reverse shell one-liners
+  selection_python_revshell:
+    Image|endswith:
+      - '/python'
+      - '/python2'
+      - '/python3'
+      - '/python2.7'
+      - '/python3.8'
+      - '/python3.9'
+      - '/python3.10'
+      - '/python3.11'
+    CommandLine|contains|all:
+      - '-c'
+      - 'socket'
+    CommandLine|contains:
+      - 'connect'
+      - 'SOCK_STREAM'
+      - 'subprocess'
+      - 'pty.spawn'
+      - 'os.dup2'
+      - 'os.execl'
+
+  # Group 5: Perl reverse shell
+  selection_perl_revshell:
+    Image|endswith:
+      - '/perl'
+      - '/perl5'
+    CommandLine|contains|all:
+      - '-e'
+      - 'socket'
+    CommandLine|contains:
+      - 'SOCK_STREAM'
+      - 'connect'
+      - 'exec'
+
+  # Group 6: Ruby reverse shell
+  selection_ruby_revshell:
+    Image|endswith:
+      - '/ruby'
+      - '/ruby2'
+    CommandLine|contains|all:
+      - '-e'
+      - 'Socket'
+    CommandLine|contains:
+      - 'connect'
+      - 'exec'
+      - 'spawn'
+      - 'TCPSocket'
+
+  # Group 7: Socat reverse shell
+  selection_socat:
+    Image|endswith:
+      - '/socat'
+    CommandLine|contains:
+      - 'EXEC'
+      - 'exec'
+    CommandLine|contains:
+      - 'TCP:'
+      - 'TCP4:'
+      - 'TCP6:'
+      - 'UDP:'
+
+  # Group 8: PHP reverse shell
+  selection_php_revshell:
+    Image|endswith:
+      - '/php'
+      - '/php7'
+      - '/php8'
+    CommandLine|contains|all:
+      - '-r'
+      - 'fsockopen'
+
+  # Filter: Legitimate uses
+  filter_legitimate_scripts:
+    CommandLine|contains:
+      - 'test -c'
+      - 'check_tcp'
+      - '/usr/lib/nagios'
+      - '/usr/lib/monitoring'
+  filter_admin_users:
+    User:
+      - 'root'
+    ParentImage|startswith:
+      - '/usr/bin/ansible'
+      - '/usr/local/bin/ansible'
+
+  condition: >
+    (
+      selection_interactive_shell or
+      selection_dev_tcp or
+      selection_netcat or
+      selection_python_revshell or
+      selection_perl_revshell or
+      selection_ruby_revshell or
+      selection_socat or
+      selection_php_revshell
+    )
+    and not (filter_legitimate_scripts or filter_admin_users)
+
+falsepositives:
+  - Legitimate use of netcat for port scanning or debugging by administrators
+  - Development and testing environments running socket-based tests
+  - Ansible or configuration management tools using Python socket modules
+  - Monitoring scripts using /dev/tcp for health checks
+  - CTF or security training environments
+level: high

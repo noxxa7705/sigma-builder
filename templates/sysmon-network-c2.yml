@@ -1,0 +1,138 @@
+title: Suspicious Outbound Network Connection to Potential C2 Infrastructure
+id: 7e1f4a2c-9d3b-4f8e-b5a1-6c4d0e7f3b2a
+status: experimental
+description: |
+  Detects suspicious outbound network connections indicative of Command-and-Control (C2) communication.
+  Focuses on non-browser, non-system processes initiating connections over HTTP/HTTPS ports (80/443)
+  or other common C2 ports to potentially malicious destinations. Also flags uncommon processes
+  making network connections, which may indicate process injection, living-off-the-land techniques,
+  or beaconing malware. Raw IP connections on web ports are treated as higher confidence indicators.
+references:
+  - https://attack.mitre.org/techniques/T1071/001/
+  - https://github.com/SigmaHQ/sigma/blob/master/rules/windows/network_connection/net_connection_win_susp_outbound.yml
+  - https://thedfirreport.com/
+author: noxxa
+date: 2026-03-22
+modified: 2026-03-22
+tags:
+  - attack.command_and_control
+  - attack.t1071.001
+logsource:
+  category: network_connection
+  product: windows
+  service: sysmon
+detection:
+  # Group 1: Suspicious processes making outbound connections on web ports
+  selection_suspicious_process:
+    Initiated: 'true'
+    DestinationPort:
+      - 80
+      - 443
+      - 8080
+      - 8443
+      - 4443
+      - 9443
+    Image|endswith:
+      - '\powershell.exe'
+      - '\pwsh.exe'
+      - '\cmd.exe'
+      - '\mshta.exe'
+      - '\wscript.exe'
+      - '\cscript.exe'
+      - '\rundll32.exe'
+      - '\regsvr32.exe'
+      - '\certutil.exe'
+      - '\bitsadmin.exe'
+      - '\msbuild.exe'
+      - '\installutil.exe'
+      - '\regasm.exe'
+      - '\regsvcs.exe'
+      - '\msiexec.exe'
+      - '\wmic.exe'
+      - '\scriptrunner.exe'
+
+  # Group 2: Direct IP connections on web ports (no DNS resolution - suspicious)
+  selection_direct_ip:
+    Initiated: 'true'
+    DestinationPort:
+      - 80
+      - 443
+      - 8080
+      - 8443
+    DestinationIp|re: '^(?!10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|::1|fd[0-9a-f]{2}:)[0-9a-f:.]{3,}'
+
+  # Group 3: Common non-web ports used for C2 (reverse shells, custom protocols)
+  selection_uncommon_ports:
+    Initiated: 'true'
+    DestinationPort:
+      - 1080
+      - 4444
+      - 4445
+      - 5555
+      - 6666
+      - 7777
+      - 8888
+      - 9001
+      - 9050
+      - 31337
+
+  # Filter: Known legitimate browsers and system processes
+  filter_browsers:
+    Image|endswith:
+      - '\chrome.exe'
+      - '\firefox.exe'
+      - '\msedge.exe'
+      - '\iexplore.exe'
+      - '\brave.exe'
+      - '\opera.exe'
+      - '\vivaldi.exe'
+      - '\safari.exe'
+  filter_system_updaters:
+    Image|endswith:
+      - '\MicrosoftEdgeUpdate.exe'
+      - '\GoogleUpdate.exe'
+      - '\OneDrive.exe'
+      - '\Teams.exe'
+      - '\Slack.exe'
+      - '\zoom.exe'
+      - '\svchost.exe'
+      - '\lsass.exe'
+      - '\services.exe'
+      - '\wuauclt.exe'
+      - '\WindowsUpdateBox.exe'
+  filter_local_destinations:
+    DestinationIp|startswith:
+      - '10.'
+      - '172.16.'
+      - '172.17.'
+      - '172.18.'
+      - '172.19.'
+      - '172.20.'
+      - '172.21.'
+      - '172.22.'
+      - '172.23.'
+      - '172.24.'
+      - '172.25.'
+      - '172.26.'
+      - '172.27.'
+      - '172.28.'
+      - '172.29.'
+      - '172.30.'
+      - '172.31.'
+      - '192.168.'
+      - '127.'
+      - '::1'
+      - 'fe80:'
+
+  condition: >
+    (selection_suspicious_process or selection_uncommon_ports or
+    (selection_direct_ip and not filter_browsers))
+    and not (filter_system_updaters or filter_local_destinations)
+
+falsepositives:
+  - Legitimate administrative tools (PowerShell scripts for IT automation) making outbound connections
+  - Software packaging and deployment tools using web ports
+  - Development environments and build tools fetching dependencies
+  - Security scanning tools performing authorized network assessments
+  - Custom enterprise applications with embedded update mechanisms
+level: medium

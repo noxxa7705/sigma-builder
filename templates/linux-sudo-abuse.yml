@@ -1,0 +1,137 @@
+user
+title: Linux Sudo Privilege Abuse for Shell or Command Execution
+id: 5b9d3e7a-1c6f-4b2e-8a0d-4f7c9e1b5d3a
+status: experimental
+description: |
+  Detects potential abuse of sudo to escalate privileges on Linux systems. Monitors auth logs
+  for sudo invocations that spawn interactive shells (sudo bash, sudo su, sudo -s), execute
+  interpreters (sudo python, sudo perl), or run commands commonly used in privilege escalation
+  GTFOBins scenarios. Attackers with sudo access to specific binaries may exploit misconfigurations
+  to obtain root shells or read sensitive files outside their intended scope.
+references:
+  - https://attack.mitre.org/techniques/T1548/003/
+  - https://gtfobins.github.io/#+sudo
+  - https://github.com/SigmaHQ/sigma/blob/master/rules/linux/other/lnx_sudo_privilege_escalation.yml
+  - https://www.sudo.ws/docs/man/sudoers.man/
+author: noxxa
+date: 2026-03-22
+modified: 2026-03-22
+tags:
+  - attack.privilege_escalation
+  - attack.t1548.003
+logsource:
+  product: linux
+  service: auth
+detection:
+  # Group 1: sudo spawning an interactive shell directly
+  selection_sudo_shell:
+    Message|contains:
+      - 'sudo: '
+    Message|contains:
+      - 'COMMAND=/bin/bash'
+      - 'COMMAND=/bin/sh'
+      - 'COMMAND=/bin/zsh'
+      - 'COMMAND=/bin/ksh'
+      - 'COMMAND=/usr/bin/bash'
+      - 'COMMAND=/usr/bin/sh'
+      - 'COMMAND=/usr/bin/zsh'
+      - 'COMMAND=/bin/dash'
+      - 'COMMAND=bash'
+      - 'COMMAND=sh'
+
+  # Group 2: sudo su to switch to root
+  selection_sudo_su:
+    Message|contains:
+      - 'sudo: '
+    Message|contains:
+      - 'COMMAND=/bin/su'
+      - 'COMMAND=/usr/bin/su'
+      - 'COMMAND=su -'
+      - 'COMMAND=su root'
+      - 'COMMAND=/usr/bin/sudo'
+
+  # Group 3: GTFOBins - interpreters via sudo
+  selection_sudo_interpreters:
+    Message|contains:
+      - 'sudo: '
+    Message|contains:
+      - 'COMMAND=/usr/bin/python'
+      - 'COMMAND=/usr/bin/python3'
+      - 'COMMAND=/usr/bin/python2'
+      - 'COMMAND=/usr/bin/perl'
+      - 'COMMAND=/usr/bin/ruby'
+      - 'COMMAND=/usr/bin/lua'
+      - 'COMMAND=/usr/bin/tclsh'
+      - 'COMMAND=/usr/bin/php'
+      - 'COMMAND=/usr/bin/node'
+      - 'COMMAND=/usr/local/bin/python'
+      - 'COMMAND=/usr/local/bin/node'
+
+  # Group 4: GTFOBins - file editors and viewers that can spawn shells
+  selection_sudo_gtfo_editors:
+    Message|contains:
+      - 'sudo: '
+    Message|contains:
+      - 'COMMAND=/usr/bin/vim'
+      - 'COMMAND=/usr/bin/vi'
+      - 'COMMAND=/usr/bin/nano'
+      - 'COMMAND=/usr/bin/less'
+      - 'COMMAND=/usr/bin/more'
+      - 'COMMAND=/usr/bin/man'
+      - 'COMMAND=/usr/bin/awk'
+      - 'COMMAND=/usr/bin/gawk'
+      - 'COMMAND=/usr/bin/nawk'
+      - 'COMMAND=/usr/bin/ed'
+      - 'COMMAND=/bin/ed'
+
+  # Group 5: GTFOBins - utilities that allow arbitrary reads/writes
+  selection_sudo_gtfo_utils:
+    Message|contains:
+      - 'sudo: '
+    Message|contains:
+      - 'COMMAND=/usr/bin/find'
+      - 'COMMAND=/usr/bin/tee'
+      - 'COMMAND=/usr/bin/cp'
+      - 'COMMAND=/usr/bin/dd'
+      - 'COMMAND=/usr/bin/chmod'
+      - 'COMMAND=/usr/bin/chown'
+      - 'COMMAND=/usr/bin/install'
+      - 'COMMAND=/usr/bin/curl'
+      - 'COMMAND=/usr/bin/wget'
+      - 'COMMAND=/usr/bin/rsync'
+      - 'COMMAND=/usr/bin/tar'
+      - 'COMMAND=/usr/bin/zip'
+
+  # Group 6: Failed sudo attempts (potential brute force or probing)
+  selection_sudo_failed:
+    Message|contains:
+      - 'sudo: '
+    Message|contains:
+      - 'authentication failure'
+      - 'incorrect password attempt'
+      - '3 incorrect password attempts'
+      - 'user NOT in sudoers'
+      - 'is not allowed to run sudo'
+
+  # Filter: Routine administrative sudo from known admin groups
+  filter_expected_admin:
+    Message|contains:
+      - 'TTY=pts/'
+    Message|contains:
+      - 'USER=root'
+
+  condition: >
+    selection_sudo_shell or
+    selection_sudo_su or
+    selection_sudo_interpreters or
+    selection_sudo_gtfo_editors or
+    selection_sudo_gtfo_utils or
+    selection_sudo_failed
+
+falsepositives:
+  - System administrators legitimately using sudo bash or sudo su during maintenance
+  - Automated configuration management tools (Ansible, Chef, Puppet) using sudo for privilege escalation in pipelines
+  - Developers with broad sudo privileges in development environments
+  - Cron jobs or systemd units running interpreter-based scripts with sudo
+  - Legitimate use of text editors with sudo for system file editing
+level: medium

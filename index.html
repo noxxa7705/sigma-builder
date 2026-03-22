@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sigma Rule Builder — NOXXA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<nav id="nav">
+  <div class="nav-inner">
+    <a href="https://arrogance7705.github.io" class="nav-logo">NOXXA</a>
+    <div class="nav-center">
+      <span class="nav-tool-label">sigma rule builder</span>
+    </div>
+    <ul class="nav-links">
+      <li><a href="https://github.com/arrogance7705/sigma-builder" target="_blank">github →</a></li>
+    </ul>
+  </div>
+</nav>
+
+<div id="app">
+
+  <!-- Toast -->
+  <div class="toast" :class="{ visible: notification }">{{ notification }}</div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="toolbar-inner">
+      <div class="toolbar-left">
+        <span class="mono label-xs">SIGMA RULE BUILDER</span>
+        <div class="lint-badge" :class="lint.valid ? 'ok' : 'err'">
+          <span v-if="lint.valid">✓ valid</span>
+          <span v-else>{{ lint.errors.length }} error{{ lint.errors.length !== 1 ? 's' : '' }}</span>
+        </div>
+      </div>
+      <div class="toolbar-right">
+        <button class="btn-tool" @click="showBrowser = true">⊞ community rules</button>
+        <button class="btn-tool" @click="showTemplates = true">⊙ templates</button>
+        <button class="btn-tool" @click="showImport = true">↑ import</button>
+        <button class="btn-tool" @click="newRule">+ new</button>
+        <button class="btn-tool" @click="showSettings = true">⚙</button>
+        <button class="btn-tool accent" @click="exportRule">↓ export .yml</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main layout -->
+  <div class="builder-layout">
+
+    <!-- LEFT: form panel -->
+    <div class="form-panel">
+
+      <!-- Tab nav -->
+      <div class="tab-nav">
+        <button v-for="t in ['metadata','logsource','detection','tags','preview']" :key="t"
+                class="tab-btn" :class="{ active: activeTab === t }" @click="activeTab = t">
+          <span class="tab-dot" :class="{
+            'dot-ok':   tabStatus(t) === 'ok',
+            'dot-warn': tabStatus(t) === 'warn',
+            'dot-err':  tabStatus(t) === 'err'
+          }"></span>
+          {{ t }}
+        </button>
+      </div>
+
+      <!-- ══ METADATA ══════════════════════════════════════════════════════ -->
+      <div v-show="activeTab === 'metadata'" class="tab-content">
+
+        <div class="field-group">
+          <label>Title <span class="req">*</span></label>
+          <input v-model="rule.title" class="inp" placeholder="e.g. Suspicious PowerShell Encoded Command" />
+        </div>
+
+        <div class="field-row">
+          <div class="field-group">
+            <label>Rule ID</label>
+            <div class="inp-row">
+              <input v-model="rule.id" class="inp mono-inp" readonly />
+              <button class="btn-icon" @click="regenId" title="New UUID">⟳</button>
+            </div>
+          </div>
+          <div class="field-group">
+            <label>Status</label>
+            <select v-model="rule.status" class="inp">
+              <option v-for="s in data.statusOptions" :key="s" :value="s">{{ s }}</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label>Level <span class="req">*</span></label>
+            <select v-model="rule.level" class="inp" :class="`level-${rule.level}`">
+              <option v-for="l in data.levelOptions" :key="l" :value="l">{{ l }}</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label>Description</label>
+          <textarea v-model="rule.description" class="inp" rows="3"
+                    placeholder="What does this rule detect and why is it suspicious?"></textarea>
+        </div>
+
+        <div class="field-row">
+          <div class="field-group">
+            <label>Author</label>
+            <input v-model="rule.author" class="inp" placeholder="your name / handle" />
+          </div>
+          <div class="field-group">
+            <label>Date</label>
+            <input v-model="rule.date" type="date" class="inp" />
+          </div>
+          <div class="field-group">
+            <label>Modified</label>
+            <input v-model="rule.modified" type="date" class="inp" />
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label>References</label>
+          <div v-for="(r, i) in rule.references" :key="i" class="list-row">
+            <input v-model="rule.references[i]" class="inp" placeholder="https://..." />
+            <button class="btn-icon danger" @click="removeListItem(rule.references, i)">×</button>
+          </div>
+          <button class="btn-add" @click="addListItem(rule.references)">+ add reference</button>
+        </div>
+
+        <div class="field-group">
+          <label>False Positives</label>
+          <div v-for="(fp, i) in rule.falsepositives" :key="i" class="list-row">
+            <input v-model="rule.falsepositives[i]" class="inp" placeholder="Legitimate admin activity..." />
+            <button class="btn-icon danger" @click="removeListItem(rule.falsepositives, i)">×</button>
+          </div>
+          <button class="btn-add" @click="addListItem(rule.falsepositives)">+ add false positive</button>
+        </div>
+
+        <div class="field-group">
+          <label>Output Fields <span class="hint">(optional)</span></label>
+          <div v-for="(f, i) in rule.fields" :key="i" class="list-row">
+            <input v-model="rule.fields[i]" class="inp mono-inp"
+                   :placeholder="fieldSuggestions[0] || 'FieldName'" />
+            <button class="btn-icon danger" @click="removeListItem(rule.fields, i)">×</button>
+          </div>
+          <button class="btn-add" @click="addListItem(rule.fields)">+ add field</button>
+        </div>
+
+      </div>
+
+      <!-- ══ LOGSOURCE ════════════════════════════════════════════════════ -->
+      <div v-show="activeTab === 'logsource'" class="tab-content">
+
+        <div class="field-group">
+          <label>Quick Preset</label>
+          <select v-model="selectedPreset" class="inp">
+            <option value="">— select a preset —</option>
+            <optgroup v-for="(group, gname) in logsourceGroups" :key="gname" :label="gname">
+              <option v-for="ls in group" :key="ls.id" :value="ls.id">{{ ls.label }}</option>
+            </optgroup>
+          </select>
+          <p class="hint-text">Presets fill the fields below and suggest detection field names.</p>
+        </div>
+
+        <div class="separator"></div>
+
+        <div class="field-row">
+          <div class="field-group">
+            <label>Category</label>
+            <input v-model="rule.logsource.category" class="inp mono-inp" placeholder="process_creation" />
+          </div>
+          <div class="field-group">
+            <label>Product</label>
+            <input v-model="rule.logsource.product" class="inp mono-inp" placeholder="windows" />
+          </div>
+          <div class="field-group">
+            <label>Service</label>
+            <input v-model="rule.logsource.service" class="inp mono-inp" placeholder="sysmon" />
+          </div>
+        </div>
+
+        <div v-if="fieldSuggestions.length" class="field-suggestions">
+          <p class="label-xs mono">Available fields for this logsource:</p>
+          <div class="field-chips">
+            <span v-for="f in fieldSuggestions" :key="f" class="chip mono">{{ f }}</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ══ DETECTION ════════════════════════════════════════════════════ -->
+      <div v-show="activeTab === 'detection'" class="tab-content">
+
+        <div v-for="group in rule.detection.groups" :key="group.id" class="detection-group">
+          <div class="group-header">
+            <input v-model="group.name" class="inp group-name-inp mono-inp" placeholder="selection" />
+            <div class="group-type-toggle">
+              <button class="btn-type" :class="{ active: group.type === 'fields' }"
+                      @click="group.type = 'fields'">fields</button>
+              <button class="btn-type" :class="{ active: group.type === 'keywords' }"
+                      @click="group.type = 'keywords'">keywords</button>
+            </div>
+            <button class="btn-icon danger" @click="removeGroup(group.id)"
+                    :disabled="rule.detection.groups.length <= 1">×</button>
+          </div>
+
+          <!-- Field mode -->
+          <div v-if="group.type === 'fields'" class="group-fields">
+            <div v-for="field in group.fields" :key="field.id" class="field-entry">
+              <div class="field-entry-top">
+                <div class="field-name-wrap">
+                  <input v-model="field.field" class="inp mono-inp field-name-inp"
+                         placeholder="FieldName" list="field-suggestions-list" />
+                  <datalist id="field-suggestions-list">
+                    <option v-for="f in fieldSuggestions" :key="f" :value="f" />
+                  </datalist>
+                </div>
+                <select v-model="field.modifier" class="inp modifier-sel">
+                  <option v-for="m in data.modifiers" :key="m.value" :value="m.value">{{ m.label }}</option>
+                </select>
+                <button class="btn-icon danger" @click="removeField(group, field.id)"
+                        :disabled="group.fields.length <= 1">×</button>
+              </div>
+              <div class="field-values">
+                <div v-for="(val, vi) in field.values" :key="vi" class="list-row value-row">
+                  <input v-model="field.values[vi]" class="inp mono-inp" placeholder="value" />
+                  <button class="btn-icon danger" @click="removeValue(field, vi)"
+                          :disabled="field.values.length <= 1">×</button>
+                </div>
+                <button class="btn-add small" @click="addValue(field)">+ value</button>
+              </div>
+            </div>
+            <button class="btn-add" @click="addField(group)">+ add field</button>
+          </div>
+
+          <!-- Keyword mode -->
+          <div v-if="group.type === 'keywords'" class="group-keywords">
+            <p class="hint-text">Keywords match against full log event text (no field binding).</p>
+            <div v-for="(kw, ki) in group.keywords" :key="ki" class="list-row">
+              <input v-model="group.keywords[ki]" class="inp mono-inp" placeholder="keyword" />
+              <button class="btn-icon danger" @click="removeKeyword(group, ki)"
+                      :disabled="group.keywords.length <= 1">×</button>
+            </div>
+            <button class="btn-add" @click="addKeyword(group)">+ add keyword</button>
+          </div>
+        </div>
+
+        <button class="btn-add group-add" @click="addGroup">+ add selection group</button>
+
+        <div class="separator"></div>
+
+        <div class="field-group">
+          <label>Condition <span class="req">*</span></label>
+          <div class="condition-templates">
+            <button v-for="ct in data.conditionTemplates" :key="ct.value"
+                    class="btn-cond-tpl"
+                    :class="{ active: rule.detection.condition === ct.value }"
+                    @click="setConditionTemplate(ct.value)">
+              {{ ct.label }}
+            </button>
+          </div>
+          <input v-model="rule.detection.condition" class="inp mono-inp" placeholder="selection" />
+        </div>
+
+        <div class="field-group">
+          <label>Timeframe <span class="hint">(optional)</span></label>
+          <input v-model="rule.detection.timeframe" class="inp mono-inp"
+                 placeholder="e.g. 15m, 1h, 30s" />
+        </div>
+
+      </div>
+
+      <!-- ══ TAGS ══════════════════════════════════════════════════════════ -->
+      <div v-show="activeTab === 'tags'" class="tab-content">
+
+        <div class="field-group">
+          <label>Custom Tags</label>
+          <div v-for="(tag, i) in rule.tags" :key="i" class="list-row">
+            <input v-model="rule.tags[i]" class="inp mono-inp" placeholder="attack.t1059.001" />
+            <button class="btn-icon danger" @click="removeTag(i)">×</button>
+          </div>
+          <button class="btn-add" @click="addCustomTag">+ add tag</button>
+        </div>
+
+        <div class="separator"></div>
+
+        <div class="field-group">
+          <label>MITRE ATT&amp;CK Quick-Select</label>
+          <input v-model="tagSearch" class="inp" placeholder="Search T-ID or technique name…" />
+        </div>
+
+        <div class="mitre-grid">
+          <button v-for="t in filteredMitre" :key="t.id"
+                  class="mitre-btn" :class="{ selected: hasTag(t.id) }"
+                  @click="toggleMitreTag(t.id)" :title="t.name">
+            <span class="mitre-id">{{ t.id }}</span>
+            <span class="mitre-name">{{ t.name }}</span>
+          </button>
+        </div>
+
+      </div>
+
+      <!-- ══ PREVIEW ═══════════════════════════════════════════════════════ -->
+      <div v-show="activeTab === 'preview'" class="tab-content preview-tab">
+
+        <div v-if="lint.errors.length || lint.warnings.length" class="lint-box">
+          <div v-for="e in lint.errors"   :key="e" class="lint-item lint-error">✕ {{ e }}</div>
+          <div v-for="w in lint.warnings" :key="w" class="lint-item lint-warning">⚠ {{ w }}</div>
+        </div>
+        <div v-else class="lint-box lint-clean">✓ Rule looks good</div>
+
+        <div class="preview-actions">
+          <button class="btn-tool" @click="copyYaml">{{ copied ? '✓ copied!' : '⎘ copy' }}</button>
+          <button class="btn-tool accent" @click="exportRule">↓ export .yml</button>
+        </div>
+
+        <pre class="yaml-preview">{{ yamlOutput }}</pre>
+
+      </div>
+    </div>
+
+    <!-- RIGHT: live preview -->
+    <div class="preview-panel">
+      <div class="preview-panel-header">
+        <span class="mono label-xs">LIVE PREVIEW</span>
+        <div class="preview-panel-actions">
+          <button class="btn-tool small" @click="copyYaml">{{ copied ? '✓' : '⎘ copy' }}</button>
+          <button class="btn-tool small accent" @click="exportRule">↓ export</button>
+        </div>
+      </div>
+      <div v-if="lint.errors.length" class="lint-inline">
+        <span v-for="e in lint.errors" :key="e" class="lint-err-inline">✕ {{ e }}</span>
+      </div>
+      <pre class="yaml-live">{{ yamlOutput }}</pre>
+    </div>
+
+  </div><!-- /.builder-layout -->
+
+  <!-- ══ MODAL: COMMUNITY BROWSER ══════════════════════════════════════════ -->
+  <div class="modal-overlay" v-if="showBrowser" @click.self="showBrowser = false">
+    <div class="modal modal-browser">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <span class="modal-title">SigmaHQ Community Rules</span>
+          <a href="https://github.com/SigmaHQ/sigma" target="_blank" class="modal-link">
+            github.com/SigmaHQ/sigma →
+          </a>
+        </div>
+        <button class="btn-icon" @click="showBrowser = false">×</button>
+      </div>
+
+      <div class="browser-layout">
+        <!-- Left sidebar: categories -->
+        <div class="browser-sidebar">
+          <div v-for="(cats, grp) in communityGroups" :key="grp" class="browser-group">
+            <div class="browser-group-label mono label-xs">{{ grp }}</div>
+            <button v-for="cat in cats" :key="cat.id"
+                    class="browser-cat-btn"
+                    :class="{ active: activeCatId === cat.id }"
+                    @click="selectCategory(cat)">
+              {{ cat.label.split(' — ')[1] || cat.label }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Right: file list -->
+        <div class="browser-files">
+          <div v-if="!activeCatId" class="browser-empty">
+            <p>← Select a category to browse community rules</p>
+            <p class="hint-text">Loads rule list from github.com/SigmaHQ/sigma on demand.</p>
+            <p class="hint-text">Add a GitHub token in <button class="btn-inline-link" @click="showBrowser=false; showSettings=true">Settings ⚙</button> to avoid rate limits.</p>
+          </div>
+
+          <template v-else>
+            <div class="browser-files-header">
+              <input v-model="browserSearch" class="inp browser-search"
+                     placeholder="Filter rules…" />
+              <span class="mono label-xs" v-if="catFiles.length">
+                {{ filteredFiles.length }} / {{ catFiles.length }} rules
+              </span>
+            </div>
+
+            <div v-if="catLoading" class="browser-status">loading rules…</div>
+            <div v-else-if="catError" class="browser-status err">{{ catError }}</div>
+            <div v-else-if="ruleError" class="browser-status err">{{ ruleError }}</div>
+
+            <div class="browser-file-list">
+              <button v-for="file in filteredFiles" :key="file.path"
+                      class="browser-file-btn"
+                      :disabled="ruleLoading"
+                      @click="loadCommunityRule(file)">
+                <span class="browser-file-name">{{ file.name }}</span>
+                <span class="browser-file-arrow">→</span>
+              </button>
+              <div v-if="!catLoading && filteredFiles.length === 0 && catFiles.length > 0"
+                   class="browser-status">
+                No rules match "{{ browserSearch }}"
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MODAL: LOCAL TEMPLATES ════════════════════════════════════════════ -->
+  <div class="modal-overlay" v-if="showTemplates" @click.self="showTemplates = false">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">Pinned Templates</span>
+        <button class="btn-icon" @click="showTemplates = false">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="hint-text">Quick-start templates served from this repo.</p>
+        <p v-if="templateError" class="error-text">{{ templateError }}</p>
+        <div class="tpl-list">
+          <button v-for="t in data.pinnedTemplates" :key="t.id"
+                  class="tpl-card" :disabled="templateLoading"
+                  @click="loadPinnedTemplate(t)">
+            <span class="tpl-name">{{ t.label }}</span>
+            <span class="tpl-arrow">→</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MODAL: IMPORT ════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" v-if="showImport" @click.self="showImport = false">
+    <div class="modal modal-import">
+      <div class="modal-header">
+        <span class="modal-title">Import Existing Rule</span>
+        <button class="btn-icon" @click="showImport = false">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="hint-text">Paste a Sigma rule YAML to edit it.</p>
+        <p v-if="importError" class="error-text">{{ importError }}</p>
+        <textarea v-model="importText" class="inp yaml-import-area"
+                  placeholder="title: ...&#10;logsource:&#10;  ..."></textarea>
+        <div class="modal-footer">
+          <button class="btn-tool" @click="showImport = false">cancel</button>
+          <button class="btn-tool accent" @click="doImport">import →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MODAL: SETTINGS ══════════════════════════════════════════════════ -->
+  <div class="modal-overlay" v-if="showSettings" @click.self="showSettings = false">
+    <div class="modal modal-settings">
+      <div class="modal-header">
+        <span class="modal-title">Settings</span>
+        <button class="btn-icon" @click="showSettings = false">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="field-group">
+          <label>GitHub Personal Access Token</label>
+          <input v-model="githubToken" type="password" class="inp mono-inp"
+                 placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" />
+          <p class="hint-text">
+            Optional. Raises GitHub API rate limit from 60 to 5,000 req/hr.
+            Only needs <strong>public_repo</strong> read scope (or no scope — public repos are readable unauthenticated).
+            Stored in <code>localStorage</code> only — never sent anywhere except api.github.com.
+          </p>
+          <a href="https://github.com/settings/tokens/new?description=sigma-builder&scopes=" 
+             target="_blank" class="hint-link">Generate a token →</a>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-tool" @click="showSettings = false">cancel</button>
+          <button class="btn-tool accent" @click="saveToken">save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /#app -->
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span class="mono">sigma rule builder · <a href="https://arrogance7705.github.io">NOXXA</a></span>
+    <span class="mono text-muted">static · no backend · community rules via <a href="https://github.com/SigmaHQ/sigma" target="_blank">SigmaHQ/sigma</a></span>
+  </div>
+</footer>
+
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+<script src="js/sigma-data.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+title: LOLBAS Proxy Execution via Signed Binaries
+id: 3c2a7f1e-8b4d-4e9f-a6c3-1d5e8f2b9a07
+status: experimental
+description: |
+  Detects the abuse of legitimate signed Windows binaries (Living-off-the-Land Binaries and Scripts,
+  LOLBAS) as execution proxies. Specifically targets mshta.exe, rundll32.exe, regsvr32.exe, and
+  certutil.exe when they spawn unusual child processes, execute from uncommon paths, or load remote
+  content. These techniques are commonly used by threat actors to bypass application whitelisting and
+  blend into normal system activity.
+references:
+  - https://attack.mitre.org/techniques/T1218/005/
+  - https://attack.mitre.org/techniques/T1218/010/
+  - https://attack.mitre.org/techniques/T1218/011/
+  - https://lolbas-project.github.io/
+  - https://github.com/SigmaHQ/sigma/blob/master/rules/windows/process_creation/proc_creation_win_lolbin_mshta.yml
+author: noxxa
+date: 2026-03-22
+modified: 2026-03-22
+tags:
+  - attack.defense_evasion
+  - attack.execution
+  - attack.t1218.005
+  - attack.t1218.010
+  - attack.t1218.011
+logsource:
+  category: process_creation
+  product: windows
+  service: sysmon
+detection:
+  # Group 1: LOLBAS parent processes spawning suspicious children
+  selection_lolbas_parents:
+    ParentImage|endswith:
+      - '\mshta.exe'
+      - '\rundll32.exe'
+      - '\regsvr32.exe'
+      - '\certutil.exe'
+  selection_suspicious_children:
+    Image|endswith:
+      - '\cmd.exe'
+      - '\powershell.exe'
+      - '\pwsh.exe'
+      - '\wscript.exe'
+      - '\cscript.exe'
+      - '\mshta.exe'
+      - '\wmic.exe'
+      - '\bitsadmin.exe'
+      - '\certutil.exe'
+      - '\regsvr32.exe'
+      - '\rundll32.exe'
+      - '\msiexec.exe'
+      - '\msbuild.exe'
+      - '\installutil.exe'
+      - '\schtasks.exe'
+      - '\at.exe'
+      - '\net.exe'
+      - '\net1.exe'
+      - '\curl.exe'
+      - '\wget.exe'
+
+  # Group 2: Certutil used to download remote content
+  selection_certutil_download:
+    Image|endswith: '\certutil.exe'
+    CommandLine|contains:
+      - '-urlcache'
+      - '-verifyctl'
+      - '-decode'
+      - '-decodehex'
+    CommandLine|contains:
+      - 'http://'
+      - 'https://'
+      - 'ftp://'
+
+  # Group 3: mshta loading remote HTA or script content
+  selection_mshta_remote:
+    Image|endswith: '\mshta.exe'
+    CommandLine|contains:
+      - 'http://'
+      - 'https://'
+      - 'ftp://'
+      - 'javascript:'
+      - 'vbscript:'
+
+  # Group 4: regsvr32 squiblydoo / remote COM scriptlet
+  selection_regsvr32_remote:
+    Image|endswith: '\regsvr32.exe'
+    CommandLine|contains:
+      - '/i:http'
+      - '/i:ftp'
+      - 'scrobj.dll'
+      - '/s /u /i:'
+      - '/s/u/i:'
+
+  # Group 5: rundll32 executing from non-standard paths or with suspicious args
+  selection_rundll32_suspicious:
+    Image|endswith: '\rundll32.exe'
+    CommandLine|contains:
+      - 'javascript:'
+      - 'vbscript:'
+      - 'shell32.dll,ShellExec_RunDLL'
+      - ',ShellExec_RunDLL'
+      - 'http://'
+      - 'https://'
+    CommandLine|re: '(?i)rundll32\.exe\s+[a-z]:\\users\\(public|temp|tmp|\w+\\appdata\\(local|roaming)\\temp)'
+
+  # Filter: known legitimate uses
+  filter_legitimate:
+    ParentImage|endswith:
+      - '\MsiExec.exe'
+      - '\msiexec.exe'
+    CommandLine|contains:
+      - 'msiexec'
+  filter_system_paths:
+    Image|startswith:
+      - 'C:\Windows\System32\'
+      - 'C:\Windows\SysWOW64\'
+    ParentImage|startswith:
+      - 'C:\Windows\System32\'
+      - 'C:\Windows\SysWOW64\'
+    CommandLine|contains: 'regsvr32'
+
+  condition: >
+    (
+      (selection_lolbas_parents and selection_suspicious_children) or
+      selection_certutil_download or
+      selection_mshta_remote or
+      selection_regsvr32_remote or
+      selection_rundll32_suspicious
+    )
+    and not (filter_legitimate or filter_system_paths)
+
+falsepositives:
+  - Legitimate software installation using certutil for certificate operations
+  - Some enterprise applications use rundll32 or regsvr32 for legitimate plugin loading
+  - Software deployment tools (SCCM, Intune) may invoke these binaries during package installation
+  - Antivirus or EDR products performing self-update via BITS or certutil
+level: high

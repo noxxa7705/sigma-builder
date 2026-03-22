@@ -1,0 +1,128 @@
+title: Windows Defender Real-Time Protection Disabled
+id: 6a1d4c8e-2f9b-4a7d-b3e0-5c8f1a4d2e9b
+status: experimental
+description: |
+  Detects attempts to disable Windows Defender Real-Time Protection through registry modifications
+  or observed via Windows Security Center / Defender operational event logs. Disabling real-time
+  protection is a common attacker technique to prevent malware detection prior to payload deployment.
+  
+  Detection covers two primary vectors:
+  1. Registry modification to HKLM\SOFTWARE\Microsoft\Windows Defender\Real-Time Protection\DisableRealtimeMonitoring
+     set to DWORD value 1 (captured via Sysmon EventID 13 - Registry Value Set)
+  2. Windows Defender EventID 5001 (Microsoft-Windows-Windows Defender/Operational) which is logged
+     when real-time protection is disabled. Note: EventID 5001 is NOT covered by this Sysmon-based
+     logsource — to catch it, also deploy a companion rule targeting the windefend service log for EventID 5001.
+
+  Related registry keys for tamper/disablement are also monitored, including DisableBehaviorMonitoring,
+  DisableOnAccessProtection, DisableIOAVProtection, and the policy override path under Policies.
+references:
+  - https://attack.mitre.org/techniques/T1562/001/
+  - https://docs.microsoft.com/en-us/microsoft-365/security/defender-endpoint/configure-real-time-protection-microsoft-defender-antivirus
+  - https://github.com/SigmaHQ/sigma/blob/master/rules/windows/registry/registry_set/registry_set_windows_defender_tamper.yml
+  - https://thedfirreport.com/2021/10/18/icedid-to-xinglocker-ransomware-in-24-hours/
+  - https://admx.help/?Category=Windows_10_2016&Policy=Microsoft.Policies.WindowsDefender::DisableRealtimeMonitoring
+author: noxxa
+date: 2026-03-22
+modified: 2026-03-22
+tags:
+  - attack.defense_evasion
+  - attack.t1562.001
+logsource:
+  category: registry_event
+  product: windows
+  service: sysmon
+detection:
+  # Group 1: Core real-time protection registry key disabled
+  selection_disable_realtime:
+    EventType: 'SetValue'
+    TargetObject|contains: '\Microsoft\Windows Defender\Real-Time Protection\'
+    TargetObject|endswith:
+      - '\DisableRealtimeMonitoring'
+    Details: 'DWORD (0x00000001)'
+
+  # Group 2: Behavioral/access protection disabled via registry
+  selection_disable_behavior:
+    EventType: 'SetValue'
+    TargetObject|contains: '\Microsoft\Windows Defender\Real-Time Protection\'
+    TargetObject|endswith:
+      - '\DisableBehaviorMonitoring'
+      - '\DisableOnAccessProtection'
+      - '\DisableIOAVProtection'
+      - '\DisableScanOnRealtimeEnable'
+      - '\DisableScriptScanning'
+    Details: 'DWORD (0x00000001)'
+
+  # Group 3: Group Policy / Policies path override (often used by attackers to persist disable)
+  selection_policy_disable:
+    EventType: 'SetValue'
+    TargetObject|startswith:
+      - 'HKLM\SOFTWARE\Policies\Microsoft\Windows Defender'
+      - 'HKLM\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection'
+    TargetObject|endswith:
+      - '\DisableRealtimeMonitoring'
+      - '\DisableAntiSpyware'
+      - '\DisableAntiVirus'
+    Details: 'DWORD (0x00000001)'
+
+  # Group 4: SpyNet / Cloud Protection disabled (reduces detection telemetry)
+  selection_disable_cloudprotection:
+    EventType: 'SetValue'
+    TargetObject|contains:
+      - '\Microsoft\Windows Defender\Spynet\'
+      - '\Microsoft\Windows Defender\MpEngine\'
+    TargetObject|endswith:
+      - '\SpynetReporting'
+      - '\MpCloudBlockLevel'
+      - '\SubmitSamplesConsent'
+    Details: 'DWORD (0x00000000)'
+
+  # Group 5: Tamper Protection disabled via registry
+  selection_disable_tamper:
+    EventType: 'SetValue'
+    TargetObject|contains: '\Microsoft\Windows Defender\Features\'
+    TargetObject|endswith: '\TamperProtection'
+    Details: 'DWORD (0x00000000)'
+
+  # Filter: Legitimate management via MDM/GPO from system account
+  filter_system_management:
+    Image|endswith:
+      - '\MsMpEng.exe'
+      - '\SecurityHealthService.exe'
+      - '\WinDefend.exe'
+      - '\MpCmdRun.exe'
+  filter_trustedinstaller:
+    User|contains:
+      - 'SYSTEM'
+      - 'TrustedInstaller'
+    Image|startswith:
+      - 'C:\Windows\System32\svchost.exe'
+      - 'C:\Windows\System32\TiWorker.exe'
+
+  condition: >
+    (
+      selection_disable_realtime or
+      selection_disable_behavior or
+      selection_policy_disable or
+      selection_disable_cloudprotection or
+      selection_disable_tamper
+    )
+    and not (filter_system_management or filter_trustedinstaller)
+
+# NOTE: To detect EventID 5001 (Defender real-time protection disabled as reported by Defender itself),
+# create a companion rule with:
+#   logsource:
+#     product: windows
+#     service: windefend
+#   detection:
+#     selection:
+#       EventID: 5001
+#     condition: selection
+# EventID 5001 is fired by Microsoft-Windows-Windows Defender/Operational and does not
+# appear in Sysmon logs. Both rules together provide broader coverage.
+
+falsepositives:
+  - Legitimate enterprise MDM or GPO deployments that intentionally configure Defender exclusions
+  - System administrators temporarily disabling real-time protection for software installation
+  - Enterprise security teams deploying custom AV solutions that disable Defender as part of installation
+  - Windows Update or in-place upgrades temporarily modifying Defender registry keys
+level: high
