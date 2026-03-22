@@ -2,7 +2,7 @@
 
 A static, browser-based tool for writing, validating, and exporting [Sigma](https://github.com/SigmaHQ/sigma) detection rules — no backend, no account required.
 
-**[→ Open the tool](https://arrogance7705.github.io/sigma-builder/)**
+**[→ Open the tool](https://noxxa7705.github.io/sigma-builder/)**
 
 ---
 
@@ -85,7 +85,7 @@ Settings are stored in `localStorage` only — nothing is ever sent anywhere exc
 Open `index.html` in any modern browser — or use the hosted version at:
 
 ```
-https://arrogance7705.github.io/sigma-builder/
+https://noxxa7705.github.io/sigma-builder/
 ```
 
 No build step. No npm. No server required.
