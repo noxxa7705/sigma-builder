@@ -570,7 +570,7 @@ createApp({
       notify('✓ Copied to clipboard');
     }
 
-    // ── new / reset ────────────────────────────────────────────────────────
+    // ── new / reset ────────────────────────────────────────────────────────────
     function newRule() {
       if (!confirm('Start a new rule? Unsaved changes will be lost.')) return;
       Object.assign(rule, emptyRule());
@@ -580,6 +580,263 @@ createApp({
     }
 
     function regenId() { rule.id = uuid4(); }
+
+    // ── Context menu ────────────────────────────────────────────────────────
+    const ctxMenu = reactive({ visible: false, x: 0, y: 0, items: [] });
+
+    function showCtxMenu(event, items) {
+      event.preventDefault();
+      event.stopPropagation();
+      const menuW = 220, menuH = items.length * 32 + 16;
+      ctxMenu.x = Math.max(4, Math.min(event.clientX, window.innerWidth  - menuW - 8));
+      ctxMenu.y = Math.max(4, Math.min(event.clientY, window.innerHeight - menuH - 8));
+      ctxMenu.items = items;
+      ctxMenu.visible = true;
+    }
+    function hideCtxMenu() { ctxMenu.visible = false; }
+
+    function ctxMatrixCell(event, tech, isSub) {
+      const sel = isSelected(tech.id);
+      const hasSubs = !isSub && tech.subs?.length > 0;
+      const anySubsSel = hasSubs && tech.subs.some(s => isSelected(s.id));
+      const sigmaTag = `attack.${tech.id.toLowerCase()}`;
+      const items = [
+        { label: sel ? '✗  Deselect' : '✓  Select', action: () => isSub ? toggleSubCell(tech) : toggleTechCell(tech) },
+      ];
+      if (hasSubs) {
+        items.push({ label: `⊕  Select all sub-techniques (${tech.subs.length})`, action: () => { tech.subs.forEach(s => { const t=`attack.${s.id.toLowerCase()}`; if(!rule.tags.includes(t)) rule.tags.push(t); }); } });
+        if (anySubsSel) items.push({ label: '⊖  Deselect all sub-techniques', action: () => { tech.subs.forEach(s => { const idx=rule.tags.indexOf(`attack.${s.id.toLowerCase()}`); if(idx>=0) rule.tags.splice(idx,1); }); } });
+      }
+      items.push({ separator: true });
+      items.push({ label: `⎘  Copy T-ID  (${tech.id})`, action: () => navigator.clipboard.writeText(tech.id) });
+      items.push({ label: `⎘  Copy Sigma tag  (${sigmaTag})`, action: () => navigator.clipboard.writeText(sigmaTag) });
+      const selCount = selectedTechIds.value.size;
+      items.push({ label: `⎘  Copy all selected tags${selCount ? ` (${selCount})` : ''}`, action: () => navigator.clipboard.writeText(rule.tags.filter(t=>/^attack\.t/i.test(t)).join('\n')), disabled: !selCount });
+      items.push({ separator: true });
+      items.push({ label: '↗  Open on MITRE ATT&CK', action: () => window.open(`https://attack.mitre.org/techniques/${tech.id.replace('.','/') }/`, '_blank') });
+      showCtxMenu(event, items);
+    }
+
+    function ctxBrowserFile(event, file) {
+      const rawUrl = `https://raw.githubusercontent.com/SigmaHQ/sigma/master/${file.path}`;
+      const ghUrl  = `https://github.com/SigmaHQ/sigma/blob/master/${file.path}`;
+      showCtxMenu(event, [
+        { label: '→  Load into editor', action: () => loadCommunityRule(file) },
+        { separator: true },
+        { label: '↗  Open raw on GitHub',  action: () => window.open(rawUrl, '_blank') },
+        { label: '↗  View on GitHub',      action: () => window.open(ghUrl,  '_blank') },
+        { label: '⎘  Copy file path',      action: () => navigator.clipboard.writeText(file.path) },
+      ]);
+    }
+
+    function ctxYamlPreview(event) {
+      showCtxMenu(event, [
+        { label: '⎘  Copy YAML',    action: () => copyYaml() },
+        { label: '↓  Download .yml', action: () => exportRule() },
+      ]);
+    }
+
+    // ── AI augmentation ────────────────────────────────────────────────────
+    const AI = window.SigmaAI;
+
+    const aiAvailable = computed(() => AI.isConfigured());
+
+    // Per-feature state
+    function mkAiState() {
+      return reactive({ visible: false, loading: false, text: '', rawText: '', error: '',
+                        suggestions: [], score: 0, summary: '', annotations: [] });
+    }
+    const aiState = reactive({
+      describe:       mkAiState(),
+      falsepositives: mkAiState(),
+      tags:           mkAiState(),
+      explain:        mkAiState(),
+      review:         mkAiState(),
+    });
+
+    // AI settings
+    const aiEndpoint  = ref(AI.getConfig().endpoint);
+    const aiModel     = ref(AI.getConfig().model);
+    const aiApiKey    = ref(AI.getConfig().apiKey);
+    const aiTesting   = ref(false);
+    const aiTestResult = ref(null);
+
+    function saveAiConfig() {
+      AI.saveConfig(aiEndpoint.value, aiModel.value, aiApiKey.value);
+      notify('✓ AI config saved');
+    }
+
+    async function testAiConnection() {
+      aiTesting.value = true;
+      aiTestResult.value = null;
+      try {
+        const result = await AI.testConnection();
+        aiTestResult.value = { ok: true, models: result.models };
+      } catch(e) {
+        aiTestResult.value = { ok: false, error: e.message };
+      } finally {
+        aiTesting.value = false;
+      }
+    }
+
+    function aiDismiss(feature) {
+      const s = aiState[feature];
+      s.visible = false; s.loading = false; s.text = ''; s.rawText = '';
+      s.error = ''; s.suggestions = []; s.score = 0; s.summary = ''; s.annotations = [];
+      if (s._abort) { s._abort.abort(); s._abort = null; }
+    }
+
+    function aiGenerate(feature) {
+      if (!AI.isConfigured()) { showSettings.value = true; notify('Configure an AI endpoint first'); return; }
+      const s = aiState[feature];
+      if (s.loading) return;
+      aiDismiss(feature);
+      s.visible = true;
+      s.loading = true;
+
+      const yaml = yamlOutput.value;
+      const messages = AI.PROMPTS[feature](yaml);
+      const ctrl = new AbortController();
+      s._abort = ctrl;
+
+      AI.runAI(messages, {
+        signal: ctrl.signal,
+        onChunk(chunk) {
+          s.rawText += chunk;
+          // For streaming display — show raw text while loading
+          if (feature === 'describe') {
+            s.text = s.rawText;
+          } else if (feature === 'explain') {
+            s.text = s.rawText;
+          } else {
+            s.text = s.rawText;
+          }
+        },
+        onDone() {
+          s.loading = false;
+          const raw = s.rawText;
+          if (feature === 'tags') {
+            const parsed = AI.parseJsonFromText(raw);
+            s.suggestions = Array.isArray(parsed) ? parsed.map(t => `attack.${t.toLowerCase()}`) : [];
+            if (!s.suggestions.length) s.error = 'Could not parse tag suggestions.';
+          } else if (feature === 'falsepositives') {
+            const parsed = AI.parseJsonFromText(raw);
+            s.suggestions = Array.isArray(parsed) ? parsed : [];
+            if (!s.suggestions.length) s.error = 'Could not parse false positive suggestions.';
+          } else if (feature === 'review') {
+            const parsed = AI.parseJsonFromText(raw);
+            if (parsed && parsed.summary) {
+              s.summary     = parsed.summary || '';
+              s.score       = parsed.score   || 0;
+              s.annotations = Array.isArray(parsed.annotations) ? parsed.annotations : [];
+              s.text        = raw;
+            } else {
+              s.error = 'Could not parse review. Raw: ' + raw.slice(0, 200);
+            }
+          }
+          // describe and explain just use s.text as-is
+        },
+        onError(err) {
+          s.loading = false;
+          s.error = err;
+        },
+      });
+    }
+
+    // Accept helpers
+    function acceptAiSuggestion(feature) {
+      if (feature === 'describe') {
+        rule.description = aiState.describe.text.trim();
+        aiDismiss('describe');
+        notify('✓ Description updated');
+      }
+    }
+
+    function hasAiTag(tag) { return rule.tags.includes(tag); }
+    function acceptAiTag(tag) {
+      if (!rule.tags.includes(tag)) rule.tags.push(tag);
+      else rule.tags.splice(rule.tags.indexOf(tag), 1);
+    }
+    function acceptAllAiTags() {
+      aiState.tags.suggestions.forEach(t => { if (!rule.tags.includes(t)) rule.tags.push(t); });
+      aiDismiss('tags');
+      notify(`✓ Tags added`);
+    }
+    function acceptFP(fp) {
+      const empties = rule.falsepositives.findIndex(f => !f.trim());
+      if (empties >= 0) rule.falsepositives[empties] = fp;
+      else rule.falsepositives.push(fp);
+    }
+    function acceptAllFPs() {
+      aiState.falsepositives.suggestions.forEach(fp => acceptFP(fp));
+      aiDismiss('falsepositives');
+      notify('✓ False positives added');
+    }
+
+    function scoreClass(score) {
+      if (score >= 8) return 'score-good';
+      if (score >= 5) return 'score-ok';
+      return 'score-low';
+    }
+
+    // Annotated YAML segments — splits yaml by annotation targets
+    const annotatedYamlSegments = computed(() => {
+      const yaml = yamlOutput.value;
+      const annotations = aiState.review.annotations;
+      if (!annotations.length) return [{ text: yaml }];
+      // Build list of {start, end, severity, note} for each annotation target found in yaml
+      const hits = [];
+      annotations.forEach(a => {
+        if (!a.target) return;
+        let idx = 0;
+        while (true) {
+          const pos = yaml.indexOf(a.target, idx);
+          if (pos === -1) break;
+          hits.push({ start: pos, end: pos + a.target.length, severity: a.severity, note: a.note });
+          idx = pos + 1;
+        }
+      });
+      if (!hits.length) return [{ text: yaml }];
+      // Sort by start position
+      hits.sort((a, b) => a.start - b.start);
+      // Merge overlapping
+      const merged = [hits[0]];
+      for (let i = 1; i < hits.length; i++) {
+        const last = merged[merged.length - 1];
+        if (hits[i].start < last.end) {
+          last.end = Math.max(last.end, hits[i].end);
+        } else {
+          merged.push(hits[i]);
+        }
+      }
+      // Build segments
+      const segs = [];
+      let cursor = 0;
+      merged.forEach(h => {
+        if (h.start > cursor) segs.push({ text: yaml.slice(cursor, h.start) });
+        segs.push({ text: yaml.slice(h.start, h.end), severity: h.severity, note: h.note });
+        cursor = h.end;
+      });
+      if (cursor < yaml.length) segs.push({ text: yaml.slice(cursor) });
+      return segs;
+    });
+
+    // Simple markdown renderer (bold, italic, code, line breaks — no full parser needed)
+    function renderMarkdown(text) {
+      if (!text) return '';
+      return text
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/^### (.+)$/gm, '<h4>$1</h4>')
+        .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^# (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+        .replace(/^[-*] (.+)$/gm, '<li>$1</li>')
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/\n/g, '<br>');
+    }
 
     return {
       data, rule, activeTab, yamlOutput, lint,
@@ -602,6 +859,13 @@ createApp({
       showImport, importText, importError, doImport,
       copied, exportRule, copyYaml,
       newRule, regenId,
+      ctxMenu, hideCtxMenu, ctxMatrixCell, ctxBrowserFile, ctxYamlPreview,
+      aiAvailable, aiState, aiEndpoint, aiModel, aiApiKey,
+      aiTesting, aiTestResult, saveAiConfig, testAiConnection,
+      aiGenerate, aiDismiss, acceptAiSuggestion,
+      hasAiTag, acceptAiTag, acceptAllAiTags,
+      acceptFP, acceptAllFPs, scoreClass,
+      annotatedYamlSegments, renderMarkdown,
     };
   }
 }).mount('#app');

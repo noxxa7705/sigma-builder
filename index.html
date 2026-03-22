@@ -23,7 +23,7 @@
   </div>
 </nav>
 
-<div id="app">
+<div id="app" @keydown.escape.window="hideCtxMenu">
 
   <!-- Toast -->
   <div class="toast" :class="{ visible: notification }">{{ notification }}</div>
@@ -50,7 +50,7 @@
   </div>
 
   <!-- Main layout -->
-  <div class="builder-layout">
+  <div class="builder-layout" :class="{ 'matrix-mode': activeTab === 'tags' }">
 
     <!-- LEFT: form panel -->
     <div class="form-panel">
@@ -99,9 +99,22 @@
         </div>
 
         <div class="field-group">
-          <label>Description</label>
+          <label>Description <button class="btn-ai-spark" @click="aiGenerate('describe')" :class="{loading: aiState.describe.loading}" :title="aiAvailable ? 'AI: generate description' : 'Configure AI endpoint in Settings'">✨</button></label>
           <textarea v-model="rule.description" class="inp" rows="3"
                     placeholder="What does this rule detect and why is it suspicious?"></textarea>
+        </div>
+
+        <div class="ai-inline-panel" v-if="aiState.describe.visible || aiState.describe.loading">
+          <div class="ai-panel-header">
+            <span class="mono label-xs">✨ AI SUGGESTION</span>
+            <button class="btn-icon" @click="aiDismiss('describe')">×</button>
+          </div>
+          <div class="ai-streaming-text" :class="{ streaming: aiState.describe.loading }">{{ aiState.describe.text || 'Generating…' }}</div>
+          <div v-if="aiState.describe.error" class="ai-error">{{ aiState.describe.error }}</div>
+          <div class="ai-actions" v-if="!aiState.describe.loading && aiState.describe.text && !aiState.describe.error">
+            <button class="btn-tool small accent" @click="acceptAiSuggestion('describe')">Accept</button>
+            <button class="btn-tool small" @click="aiDismiss('describe')">Dismiss</button>
+          </div>
         </div>
 
         <div class="field-row">
@@ -129,12 +142,31 @@
         </div>
 
         <div class="field-group">
-          <label>False Positives</label>
+          <label>False Positives <button class="btn-ai-spark" @click="aiGenerate('falsepositives')" :class="{loading: aiState.falsepositives.loading}" :title="aiAvailable ? 'AI: brainstorm false positives' : 'Configure AI endpoint in Settings'">✨</button></label>
           <div v-for="(fp, i) in rule.falsepositives" :key="i" class="list-row">
             <input v-model="rule.falsepositives[i]" class="inp" placeholder="Legitimate admin activity..." />
             <button class="btn-icon danger" @click="removeListItem(rule.falsepositives, i)">×</button>
           </div>
           <button class="btn-add" @click="addListItem(rule.falsepositives)">+ add false positive</button>
+        </div>
+
+        <div class="ai-inline-panel" v-if="aiState.falsepositives.visible || aiState.falsepositives.loading">
+          <div class="ai-panel-header">
+            <span class="mono label-xs">✨ AI SUGGESTIONS</span>
+            <button class="btn-icon" @click="aiDismiss('falsepositives')">×</button>
+          </div>
+          <div v-if="aiState.falsepositives.loading" class="ai-streaming-text streaming">{{ aiState.falsepositives.text || 'Thinking…' }}</div>
+          <div v-else-if="aiState.falsepositives.error" class="ai-error">{{ aiState.falsepositives.error }}</div>
+          <div v-else class="ai-fp-list">
+            <div v-for="(fp, i) in aiState.falsepositives.suggestions" :key="i" class="ai-fp-item">
+              <span>{{ fp }}</span>
+              <button class="btn-tool small" @click="acceptFP(fp)">+ add</button>
+            </div>
+          </div>
+          <div class="ai-actions" v-if="!aiState.falsepositives.loading && aiState.falsepositives.suggestions.length">
+            <button class="btn-tool small accent" @click="acceptAllFPs">Accept all</button>
+            <button class="btn-tool small" @click="aiDismiss('falsepositives')">Dismiss</button>
+          </div>
         </div>
 
         <div class="field-group">
@@ -286,6 +318,26 @@
 
         <div class="separator"></div>
 
+        <div class="ai-tag-suggest" v-if="aiState.tags.visible || aiState.tags.loading">
+          <div class="ai-panel-header">
+            <span class="mono label-xs">✨ AI TAG SUGGESTIONS</span>
+            <button class="btn-icon" @click="aiDismiss('tags')">×</button>
+          </div>
+          <div v-if="aiState.tags.loading" class="ai-streaming-text">{{ aiState.tags.text || 'Thinking…' }}</div>
+          <div v-else-if="aiState.tags.error" class="ai-error">{{ aiState.tags.error }}</div>
+          <div v-else class="ai-tag-chips">
+            <button v-for="t in aiState.tags.suggestions" :key="t"
+                    class="ai-tag-chip" :class="{ accepted: hasAiTag(t) }"
+                    @click="acceptAiTag(t)">
+              {{ t }} {{ hasAiTag(t) ? '✓' : '+' }}
+            </button>
+          </div>
+          <div class="ai-actions" v-if="!aiState.tags.loading && aiState.tags.suggestions.length">
+            <button class="btn-tool small accent" @click="acceptAllAiTags">Accept all</button>
+            <button class="btn-tool small" @click="aiDismiss('tags')">Dismiss</button>
+          </div>
+        </div>
+
         <!-- Matrix header -->
         <div class="matrix-header">
           <span class="label-xs mono">MITRE ATT&amp;CK ENTERPRISE — v14.1</span>
@@ -297,6 +349,7 @@
             <button class="btn-tool small" @click="clearAllTags" v-if="selectedTechIds.size > 0">
               clear ({{ selectedTechIds.size }})
             </button>
+            <button class="btn-tool small btn-ai" @click="aiGenerate('tags')" :class="{loading: aiState.tags.loading}">✨ suggest tags</button>
           </div>
         </div>
 
@@ -320,7 +373,8 @@
                        'search-match': matrixSearch && techMatchesSearch(tech),
                        'search-miss':  matrixSearch && !techMatchesSearch(tech) && !anySubMatches(tech),
                      }"
-                     @click.stop="toggleTechCell(tech)">
+                     @click.stop="toggleTechCell(tech)"
+                     @contextmenu="ctxMatrixCell($event, tech, false)">
                   <span class="cell-id">{{ tech.id }}</span>
                   <span class="cell-name">{{ tech.name }}</span>
                   <span v-if="tech.subs.length" class="cell-sub-toggle"
@@ -337,7 +391,8 @@
                          'search-match': matrixSearch && subMatchesSearch(sub),
                          'search-miss':  matrixSearch && !subMatchesSearch(sub),
                        }"
-                       @click="toggleSubCell(sub, tech)">
+                       @click="toggleSubCell(sub, tech)"
+                       @contextmenu="ctxMatrixCell($event, sub, true)">
                     <span class="cell-id">{{ sub.id }}</span>
                     <span class="cell-name">{{ sub.name }}</span>
                   </div>
@@ -361,9 +416,58 @@
         <div class="preview-actions">
           <button class="btn-tool" @click="copyYaml">{{ copied ? '✓ copied!' : '⎘ copy' }}</button>
           <button class="btn-tool accent" @click="exportRule">↓ export .yml</button>
+          <button class="btn-tool btn-ai" @click="aiGenerate('explain')" :class="{loading: aiState.explain.loading}">✨ explain</button>
+          <button class="btn-tool btn-ai" @click="aiGenerate('review')" :class="{loading: aiState.review.loading}">✨ review</button>
         </div>
 
-        <pre class="yaml-preview">{{ yamlOutput }}</pre>
+        <!-- AI Explain panel -->
+        <div class="ai-inline-panel ai-explain-panel" v-if="aiState.explain.visible || aiState.explain.loading">
+          <div class="ai-panel-header">
+            <span class="mono label-xs">✨ RULE EXPLANATION</span>
+            <button class="btn-icon" @click="aiDismiss('explain')">×</button>
+          </div>
+          <div class="ai-markdown-text" :class="{ streaming: aiState.explain.loading }" v-html="renderMarkdown(aiState.explain.text)"></div>
+          <div v-if="aiState.explain.error" class="ai-error">{{ aiState.explain.error }}</div>
+        </div>
+
+        <!-- AI Review panel with annotated YAML -->
+        <div class="ai-inline-panel ai-review-panel" v-if="aiState.review.visible || aiState.review.loading">
+          <div class="ai-panel-header">
+            <span class="mono label-xs">✨ RULE REVIEW</span>
+            <span v-if="aiState.review.score" class="review-score" :class="scoreClass(aiState.review.score)">{{ aiState.review.score }}/10</span>
+            <button class="btn-icon" @click="aiDismiss('review')">×</button>
+          </div>
+          <div v-if="aiState.review.loading" class="ai-streaming-text streaming">{{ aiState.review.rawText || 'Analysing…' }}</div>
+          <div v-else-if="aiState.review.error" class="ai-error">{{ aiState.review.error }}</div>
+          <template v-else>
+            <p class="review-summary" v-if="aiState.review.summary">{{ aiState.review.summary }}</p>
+            <!-- Annotated YAML -->
+            <pre class="yaml-annotated"><span
+              v-for="(seg, i) in annotatedYamlSegments" :key="i"
+              class="yaml-seg"
+              :class="seg.severity ? `annot-${seg.severity}` : ''"
+              :title="seg.note || ''"
+            >{{ seg.text }}</span></pre>
+            <!-- Legend -->
+            <div class="annot-legend" v-if="aiState.review.annotations.length">
+              <span class="legend-label mono label-xs">LEGEND</span>
+              <span class="legend-item annot-error">■ error</span>
+              <span class="legend-item annot-warning">■ warning</span>
+              <span class="legend-item annot-info">■ info</span>
+              <span class="legend-item annot-good">■ good</span>
+            </div>
+            <!-- Annotation list -->
+            <div class="annot-list">
+              <div v-for="(a, i) in aiState.review.annotations" :key="i" class="annot-item" :class="`annot-item-${a.severity}`">
+                <span class="annot-badge" :class="`annot-${a.severity}`">{{ a.severity }}</span>
+                <code class="annot-target">{{ a.target }}</code>
+                <span class="annot-note">{{ a.note }}</span>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <pre class="yaml-preview" @contextmenu="ctxYamlPreview($event)">{{ yamlOutput }}</pre>
 
       </div>
     </div>
@@ -380,7 +484,7 @@
       <div v-if="lint.errors.length" class="lint-inline">
         <span v-for="e in lint.errors" :key="e" class="lint-err-inline">✕ {{ e }}</span>
       </div>
-      <pre class="yaml-live">{{ yamlOutput }}</pre>
+      <pre class="yaml-live" @contextmenu="ctxYamlPreview($event)">{{ yamlOutput }}</pre>
     </div>
 
   </div><!-- /.builder-layout -->
@@ -437,7 +541,8 @@
               <button v-for="file in filteredFiles" :key="file.path"
                       class="browser-file-btn"
                       :disabled="ruleLoading"
-                      @click="loadCommunityRule(file)">
+                      @click="loadCommunityRule(file)"
+                      @contextmenu.stop="ctxBrowserFile($event, file)">
                 <span class="browser-file-name">{{ file.name }}</span>
                 <span class="browser-file-arrow">→</span>
               </button>
@@ -514,13 +619,49 @@
           <a href="https://github.com/settings/tokens/new?description=sigma-builder&scopes=" 
              target="_blank" class="hint-link">Generate a token →</a>
         </div>
+        <div class="separator"></div>
+        <div class="field-group">
+          <label>AI Endpoint URL <span class="hint">(OpenAI-compatible)</span></label>
+          <input v-model="aiEndpoint" class="inp mono-inp" placeholder="http://192.168.56.1:1234/v1" />
+          <p class="hint-text">Works with LM Studio, Ollama, OpenAI, or any OpenAI-compatible server.</p>
+        </div>
+        <div class="field-group">
+          <label>Model</label>
+          <input v-model="aiModel" class="inp mono-inp" placeholder="qwen/qwen3.5-9b" />
+        </div>
+        <div class="field-group">
+          <label>API Key <span class="hint">(optional)</span></label>
+          <input v-model="aiApiKey" type="password" class="inp mono-inp" placeholder="sk-… or leave blank for local" />
+        </div>
+        <div class="ai-test-row">
+          <button class="btn-tool" @click="testAiConnection" :disabled="aiTesting">
+            {{ aiTesting ? 'Testing…' : 'Test connection' }}
+          </button>
+          <span v-if="aiTestResult" class="ai-test-result" :class="aiTestResult.ok ? 'ok' : 'err'">
+            {{ aiTestResult.ok ? `✓ Connected${aiTestResult.models?.length ? ' — ' + aiTestResult.models.slice(0,3).join(', ') : ''}` : '✗ ' + aiTestResult.error }}
+          </span>
+        </div>
         <div class="modal-footer">
           <button class="btn-tool" @click="showSettings = false">cancel</button>
-          <button class="btn-tool accent" @click="saveToken">save</button>
+          <button class="btn-tool accent" @click="saveToken(); saveAiConfig()">save</button>
         </div>
       </div>
     </div>
   </div>
+
+  <!-- ══ CONTEXT MENU ══ -->
+  <Teleport to="body">
+    <div v-if="ctxMenu.visible" class="ctx-overlay" @click="hideCtxMenu" @contextmenu.prevent="hideCtxMenu"></div>
+    <div v-if="ctxMenu.visible" class="ctx-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }">
+      <template v-for="(item, i) in ctxMenu.items" :key="i">
+        <div v-if="item.separator" class="ctx-separator"></div>
+        <button v-else class="ctx-item" :class="{ disabled: item.disabled }"
+                @click="!item.disabled && (item.action(), hideCtxMenu())">
+          {{ item.label }}
+        </button>
+      </template>
+    </div>
+  </Teleport>
 
 </div><!-- /#app -->
 
@@ -535,6 +676,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
 <script src="js/attack-matrix.js"></script>
 <script src="js/sigma-data.js"></script>
+<script src="js/ai.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
