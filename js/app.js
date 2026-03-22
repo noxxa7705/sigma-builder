@@ -581,6 +581,176 @@ createApp({
 
     function regenId() { rule.id = uuid4(); }
 
+    // ── Wizard ─────────────────────────────────────────────────────────────────
+
+    const wizardScenarios = [
+      { id: 'process',    icon: '🖥', label: 'Process Execution',  desc: 'suspicious process, LOLBaS, LOLBIN' },
+      { id: 'network',    icon: '🌐', label: 'Network Activity',   desc: 'C2, DNS, suspicious connections' },
+      { id: 'file',       icon: '📁', label: 'File System',        desc: 'suspicious file creation/modification' },
+      { id: 'registry',   icon: '🗒', label: 'Registry Changes',   desc: 'persistence, run keys' },
+      { id: 'auth',       icon: '🔑', label: 'Authentication',     desc: 'logon failures, brute force, suspicious auth' },
+      { id: 'cloud',      icon: '☁', label: 'Cloud / Azure',      desc: 'Azure AD, O365, CloudTrail' },
+      { id: 'linux',      icon: '🐧', label: 'Linux / Mac',        desc: 'bash, ssh, auditd' },
+      { id: 'blank',      icon: '✎', label: 'Custom / Blank',     desc: 'start from scratch, no pre-fill' },
+    ];
+
+    // Scenario → logsource hints for filtering
+    const scenarioLsHints = {
+      process:  { category: 'process_creation' },
+      network:  { category: 'network_connection' },
+      file:     { category: 'file_event' },
+      registry: { category: 'registry_event' },
+      auth:     { product: 'windows', service: 'security' },
+      cloud:    { product: 'azure' },
+      linux:    { product: 'linux' },
+      blank:    {},
+    };
+
+    // Scenario → default logsource values for new rule
+    const scenarioDefaults = {
+      process:  { category: 'process_creation', product: 'windows', service: '' },
+      network:  { category: 'network_connection', product: '', service: '' },
+      file:     { category: 'file_event', product: '', service: '' },
+      registry: { category: 'registry_event', product: '', service: '' },
+      auth:     { category: '', product: 'windows', service: 'security' },
+      cloud:    { category: '', product: 'azure', service: '' },
+      linux:    { category: '', product: 'linux', service: '' },
+      blank:    { category: '', product: '', service: '' },
+    };
+
+    const wizard = reactive({
+      open: false, step: 1,
+      scenario: '', title: '', level: 'medium', author: '', description: '',
+      logsourceId: '',
+      aiDescLoading: false, aiDescText: '',
+      aiLsLoading: false, aiLsText: '',
+    });
+
+    const wizardFilteredLogsources = computed(() => {
+      if (!wizard.scenario || wizard.scenario === 'blank') return data.logsources;
+      const hint = scenarioLsHints[wizard.scenario] || {};
+      return data.logsources.filter(ls => {
+        if (hint.category && ls.category === hint.category) return true;
+        if (hint.product && ls.product === hint.product) return true;
+        if (hint.service && ls.service === hint.service) return true;
+        return false;
+      });
+    });
+
+    const wizardPreviewYaml = computed(() => {
+      const r = _buildWizardRule();
+      return buildYaml(r);
+    });
+
+    function _buildWizardRule() {
+      const r = emptyRule();
+      r.title = wizard.title || 'Untitled Rule';
+      r.level = wizard.level || 'medium';
+      r.author = wizard.author || '';
+      r.description = wizard.description || '';
+
+      const sc = wizard.scenario;
+      const def = scenarioDefaults[sc] || {};
+
+      // If user picked a logsource preset
+      if (wizard.logsourceId) {
+        const preset = data.logsources.find(l => l.id === wizard.logsourceId);
+        if (preset) {
+          r.logsource.category = preset.category || '';
+          r.logsource.product  = preset.product  || '';
+          r.logsource.service  = preset.service  || '';
+        }
+      } else {
+        r.logsource.category = def.category || '';
+        r.logsource.product  = def.product  || '';
+        r.logsource.service  = def.service  || '';
+      }
+
+      // Set condition to 'selection' for scenarios that make sense
+      if (sc !== 'blank') r.detection.condition = 'selection';
+
+      return r;
+    }
+
+    function openWizard() {
+      wizard.open = true;
+      wizard.step = 1;
+      wizard.scenario = '';
+      wizard.title = '';
+      wizard.level = 'medium';
+      wizard.author = localStorage.getItem('sigma_author') || '';
+      wizard.description = '';
+      wizard.logsourceId = '';
+      wizard.aiDescText = '';
+      wizard.aiLsText = '';
+    }
+
+    function wizardNext() {
+      if (wizard.step === 1 && !wizard.scenario) return;
+      if (wizard.step === 2) {
+        // Save author to localStorage
+        if (wizard.author) localStorage.setItem('sigma_author', wizard.author);
+        // Auto-select logsource based on scenario if none picked
+        if (!wizard.logsourceId && wizard.scenario !== 'blank') {
+          const filtered = wizardFilteredLogsources.value;
+          if (filtered.length === 1) wizard.logsourceId = filtered[0].id;
+        }
+      }
+      wizard.step++;
+    }
+
+    function wizardStart() {
+      const r = _buildWizardRule();
+      // Apply to reactive rule
+      Object.assign(rule, r);
+      syncPresetFromLogsource();
+      wizard.open = false;
+      activeTab.value = 'metadata';
+      notify('✓ New rule created');
+    }
+
+    function wizardAiDescribe() {
+      if (!AI.isConfigured()) return;
+      wizard.aiDescLoading = true;
+      wizard.aiDescText = '';
+      const stub = `title: ${wizard.title || 'Untitled'}\nscenario: ${wizard.scenario}`;
+      const messages = [
+        { role: 'system', content: 'You are a cybersecurity expert. Write a concise 2-3 sentence description for a Sigma detection rule. Plain text only.' },
+        { role: 'user', content: `Write a description for a Sigma rule with this context:\n${stub}` },
+      ];
+      AI.runAI(messages, {
+        onChunk(c) { wizard.aiDescText += c; },
+        onDone()   { wizard.aiDescLoading = false; },
+        onError(e) { wizard.aiDescLoading = false; wizard.aiDescText = `Error: ${e}`; },
+      });
+    }
+
+    function wizardAiLogsource() {
+      if (!AI.isConfigured()) return;
+      wizard.aiLsLoading = true;
+      wizard.aiLsText = 'Thinking…';
+      const lsNames = data.logsources.map(l => `${l.id}: ${l.label}`).join('\n');
+      const messages = [
+        { role: 'system', content: `You are a Sigma detection expert. Given a detection scenario, pick the best logsource preset ID from the list. Return ONLY the preset ID string, nothing else.\n\nAvailable presets:\n${lsNames}` },
+        { role: 'user', content: `Scenario: ${wizard.scenario}\nTitle: ${wizard.title || 'unknown'}\nPick the best logsource preset ID:` },
+      ];
+      AI.runAI(messages, {
+        onChunk(c) { wizard.aiLsText = (wizard.aiLsText === 'Thinking…' ? '' : wizard.aiLsText) + c; },
+        onDone() {
+          wizard.aiLsLoading = false;
+          const suggested = wizard.aiLsText.trim().replace(/[`"'\n]/g, '');
+          const found = data.logsources.find(l => l.id === suggested);
+          if (found) {
+            wizard.logsourceId = found.id;
+            wizard.aiLsText = `✓ Suggested: ${found.label}`;
+          } else {
+            wizard.aiLsText = `Could not match "${suggested}"`;
+          }
+        },
+        onError(e) { wizard.aiLsLoading = false; wizard.aiLsText = `Error: ${e}`; },
+      });
+    }
+
     // ── Context menu ────────────────────────────────────────────────────────
     const ctxMenu = reactive({ visible: false, x: 0, y: 0, items: [] });
 
@@ -858,7 +1028,9 @@ createApp({
       showTemplates, templateLoading, templateError, loadPinnedTemplate,
       showImport, importText, importError, doImport,
       copied, exportRule, copyYaml,
-      newRule, regenId,
+      newRule, regenId, openWizard,
+      wizard, wizardScenarios, wizardFilteredLogsources, wizardPreviewYaml,
+      wizardNext, wizardStart, wizardAiDescribe, wizardAiLogsource,
       ctxMenu, hideCtxMenu, ctxMatrixCell, ctxBrowserFile, ctxYamlPreview,
       aiAvailable, aiState, aiEndpoint, aiModel, aiApiKey,
       aiTesting, aiTestResult, saveAiConfig, testAiConnection,

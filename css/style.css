@@ -102,9 +102,23 @@ code {
 .toolbar-inner {
   width: 100%; max-width: 1600px; margin: 0 auto;
   padding: 0 1.5rem; display: flex; align-items: center;
-  justify-content: space-between; gap: 1rem;
+  gap: 1rem;
 }
-.toolbar-left, .toolbar-right { display: flex; align-items: center; gap: 0.75rem; }
+.toolbar-left  { display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0; }
+.toolbar-right { display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0; margin-left: auto; }
+
+/* Tabs live inside the toolbar, centered */
+.toolbar-tabs {
+  display: flex; align-items: stretch; flex: 1;
+  justify-content: center; gap: 0;
+  height: var(--toolbar-h);
+}
+.toolbar-tabs .tab-btn {
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  height: 100%;
+  padding: 0 1rem;
+}
 
 .lint-badge {
   font-family: var(--font-mono); font-size: 0.65rem; letter-spacing: 0.05em;
@@ -829,3 +843,74 @@ select.level-critical       { color: var(--lvl-critical); }
   background: var(--bg-3); border: 1px solid var(--border);
   border-radius: var(--r-sm); padding: 0.6rem 0.75rem;
 }
+
+/* ── WIZARD MODAL ─────────────────────────────────────────── */
+
+.modal-wizard { max-width: 680px; }
+.wizard-body  { gap: 0; }
+
+.wizard-steps {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono); font-size: 0.9rem;
+}
+.wizard-step-dot        { color: var(--text-dim); transition: color 0.15s; }
+.wizard-step-dot.active { color: var(--white); }
+.wizard-step-dot.done   { color: var(--ok); }
+
+/* Scenario grid */
+.wizard-scenario-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem;
+}
+.wizard-scenario-card {
+  display: flex; flex-direction: column; align-items: center; gap: 0.4rem;
+  padding: 0.75rem 0.5rem; background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--r-md); cursor: pointer; text-align: center;
+  transition: background 0.15s, border-color 0.15s;
+}
+.wizard-scenario-card:hover  { background: var(--bg-3); border-color: var(--border-focus); }
+.wizard-scenario-card.active { border-color: var(--white); background: rgba(226,226,226,0.06); }
+.wizard-sc-icon  { font-size: 1.5rem; line-height: 1; }
+.wizard-sc-label { font-size: 0.78rem; font-weight: 600; color: var(--white); }
+.wizard-sc-desc  { font-size: 0.65rem; color: var(--text-muted); line-height: 1.3; }
+
+/* Level pills */
+.wizard-level-pills { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+.wizard-level-pill {
+  font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.04em;
+  padding: 4px 12px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--bg-2); color: var(--text-muted); cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.wizard-level-pill:hover { border-color: var(--border-focus); color: var(--text); }
+.wizard-level-pill.active                    { color: var(--bg); border-color: transparent; }
+.wizard-level-pill.pill-informational.active { background: var(--lvl-informational); }
+.wizard-level-pill.pill-low.active           { background: var(--lvl-low); }
+.wizard-level-pill.pill-medium.active        { background: var(--lvl-medium); }
+.wizard-level-pill.pill-high.active          { background: var(--lvl-high); }
+.wizard-level-pill.pill-critical.active      { background: var(--lvl-critical); }
+
+/* Logsource grid */
+.wizard-ls-grid {
+  display: flex; flex-direction: column; gap: 0.35rem;
+  max-height: 360px; overflow-y: auto;
+}
+.wizard-ls-card {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 0.6rem 0.9rem; background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--r-sm); cursor: pointer; text-align: left;
+  transition: background 0.12s, border-color 0.12s; width: 100%;
+}
+.wizard-ls-card:hover  { background: var(--bg-3); border-color: var(--border-focus); }
+.wizard-ls-card.active { border-color: var(--white); background: rgba(226,226,226,0.06); }
+.wizard-ls-label { font-size: 0.8rem; font-weight: 600; color: var(--white); }
+.wizard-ls-meta  { font-family: var(--font-mono); font-size: 0.65rem; color: var(--text-muted); }
+
+/* YAML review preview */
+.wizard-yaml-preview {
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: 1rem; font-family: var(--font-mono); font-size: 0.7rem; line-height: 1.7;
+  color: var(--text); white-space: pre; overflow-x: auto; tab-size: 2;
+  max-height: 360px; overflow-y: auto;
+}
+
+.wizard-footer { border-top: 1px solid var(--border); padding-top: 0.75rem; justify-content: space-between; }

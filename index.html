@@ -38,11 +38,23 @@
           <span v-else>{{ lint.errors.length }} error{{ lint.errors.length !== 1 ? 's' : '' }}</span>
         </div>
       </div>
+      <!-- Tabs in toolbar center -->
+      <div class="toolbar-tabs">
+        <button v-for="t in ['metadata','logsource','detection','tags','preview']" :key="t"
+                class="tab-btn" :class="{ active: activeTab === t }" @click="activeTab = t">
+          <span class="tab-dot" :class="{
+            'dot-ok':   tabStatus(t) === 'ok',
+            'dot-warn': tabStatus(t) === 'warn',
+            'dot-err':  tabStatus(t) === 'err'
+          }"></span>
+          {{ t }}
+        </button>
+      </div>
       <div class="toolbar-right">
         <button class="btn-tool" @click="showBrowser = true">⊞ community rules</button>
         <button class="btn-tool" @click="showTemplates = true">⊙ templates</button>
         <button class="btn-tool" @click="showImport = true">↑ import</button>
-        <button class="btn-tool" @click="newRule">+ new</button>
+        <button class="btn-tool" @click="openWizard">+ new</button>
         <button class="btn-tool" @click="showSettings = true">⚙</button>
         <button class="btn-tool accent" @click="exportRule">↓ export .yml</button>
       </div>
@@ -54,19 +66,6 @@
 
     <!-- LEFT: form panel -->
     <div class="form-panel">
-
-      <!-- Tab nav -->
-      <div class="tab-nav">
-        <button v-for="t in ['metadata','logsource','detection','tags','preview']" :key="t"
-                class="tab-btn" :class="{ active: activeTab === t }" @click="activeTab = t">
-          <span class="tab-dot" :class="{
-            'dot-ok':   tabStatus(t) === 'ok',
-            'dot-warn': tabStatus(t) === 'warn',
-            'dot-err':  tabStatus(t) === 'err'
-          }"></span>
-          {{ t }}
-        </button>
-      </div>
 
       <!-- ══ METADATA ══════════════════════════════════════════════════════ -->
       <div v-show="activeTab === 'metadata'" class="tab-content">
@@ -644,6 +643,124 @@
         <div class="modal-footer">
           <button class="btn-tool" @click="showSettings = false">cancel</button>
           <button class="btn-tool accent" @click="saveToken(); saveAiConfig()">save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MODAL: NEW RULE WIZARD ══════════════════════════════════════════ -->
+  <div class="modal-overlay" v-if="wizard.open" @click.self="wizard.open = false">
+    <div class="modal modal-wizard">
+      <div class="modal-header">
+        <span class="modal-title">✦ New Rule Wizard</span>
+        <div class="wizard-steps">
+          <span v-for="i in 4" :key="i" class="wizard-step-dot"
+                :class="{ active: wizard.step === i, done: wizard.step > i }">
+            {{ wizard.step > i ? '●' : wizard.step === i ? '●' : '○' }}
+          </span>
+        </div>
+        <button class="btn-icon" @click="wizard.open = false">×</button>
+      </div>
+      <div class="modal-body wizard-body">
+
+        <!-- Step 1: Scenario -->
+        <div v-if="wizard.step === 1">
+          <p class="hint-text" style="margin-bottom:1rem">What kind of detection are you building?</p>
+          <div class="wizard-scenario-grid">
+            <button v-for="sc in wizardScenarios" :key="sc.id"
+                    class="wizard-scenario-card"
+                    :class="{ active: wizard.scenario === sc.id }"
+                    @click="wizard.scenario = sc.id">
+              <span class="wizard-sc-icon">{{ sc.icon }}</span>
+              <span class="wizard-sc-label">{{ sc.label }}</span>
+              <span class="wizard-sc-desc">{{ sc.desc }}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Step 2: Basics -->
+        <div v-if="wizard.step === 2">
+          <div class="field-group" style="margin-bottom:1rem">
+            <label>Title <span class="req">*</span></label>
+            <input v-model="wizard.title" class="inp" ref="wizardTitleRef"
+                   placeholder="e.g. Suspicious PowerShell Encoded Command" />
+          </div>
+          <div class="field-group" style="margin-bottom:1rem">
+            <label>Level</label>
+            <div class="wizard-level-pills">
+              <button v-for="lv in ['informational','low','medium','high','critical']" :key="lv"
+                      class="wizard-level-pill" :class="[`pill-${lv}`, { active: wizard.level === lv }]"
+                      @click="wizard.level = lv">{{ lv }}</button>
+            </div>
+          </div>
+          <div class="field-group" style="margin-bottom:1rem">
+            <label>Author</label>
+            <input v-model="wizard.author" class="inp" placeholder="your name / handle" />
+          </div>
+          <div class="field-group">
+            <label>
+              Description
+              <button v-if="aiAvailable" class="btn-ai-spark"
+                      :class="{ loading: wizard.aiDescLoading }"
+                      @click="wizardAiDescribe"
+                      title="Let AI generate a description">✨ Let AI help</button>
+            </label>
+            <textarea v-model="wizard.description" class="inp" rows="3"
+                      placeholder="Optional — what does this rule detect?"></textarea>
+            <div v-if="wizard.aiDescLoading" class="ai-streaming-text streaming" style="margin-top:0.35rem">{{ wizard.aiDescText || 'Generating…' }}</div>
+            <div v-else-if="wizard.aiDescText && !wizard.description" class="ai-inline-panel" style="margin-top:0.35rem">
+              <div class="ai-streaming-text">{{ wizard.aiDescText }}</div>
+              <div class="ai-actions">
+                <button class="btn-tool small accent" @click="wizard.description = wizard.aiDescText; wizard.aiDescText = ''">Accept</button>
+                <button class="btn-tool small" @click="wizard.aiDescText = ''">Dismiss</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3: Logsource -->
+        <div v-if="wizard.step === 3">
+          <p class="hint-text" style="margin-bottom:0.75rem">Choose a logsource preset, or skip to configure manually.</p>
+          <div v-if="aiAvailable" style="margin-bottom:0.75rem">
+            <button class="btn-tool btn-ai" :class="{ loading: wizard.aiLsLoading }" @click="wizardAiLogsource">
+              ✨ suggest logsource
+            </button>
+            <span v-if="wizard.aiLsText" class="hint" style="margin-left:0.5rem">{{ wizard.aiLsText }}</span>
+          </div>
+          <div class="wizard-ls-grid">
+            <button v-for="ls in wizardFilteredLogsources" :key="ls.id"
+                    class="wizard-ls-card"
+                    :class="{ active: wizard.logsourceId === ls.id }"
+                    @click="wizard.logsourceId = ls.id">
+              <span class="wizard-ls-label">{{ ls.label }}</span>
+              <span class="wizard-ls-meta mono">
+                <span v-if="ls.category">cat: {{ ls.category }}</span>
+                <span v-if="ls.product">  product: {{ ls.product }}</span>
+                <span v-if="ls.service">  svc: {{ ls.service }}</span>
+              </span>
+            </button>
+            <button class="wizard-ls-card" :class="{ active: wizard.logsourceId === '' }" @click="wizard.logsourceId = ''">
+              <span class="wizard-ls-label">⊘ Skip / manual</span>
+              <span class="wizard-ls-meta">Configure logsource manually in editor</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Step 4: Review -->
+        <div v-if="wizard.step === 4">
+          <p class="hint-text" style="margin-bottom:0.75rem">Review the rule that will be created:</p>
+          <pre class="wizard-yaml-preview">{{ wizardPreviewYaml }}</pre>
+        </div>
+
+      </div>
+      <div class="modal-footer wizard-footer">
+        <button class="btn-tool" @click="wizard.open = false">cancel</button>
+        <div style="display:flex;gap:0.5rem">
+          <button class="btn-tool" v-if="wizard.step > 1" @click="wizard.step--">← back</button>
+          <button class="btn-tool" v-if="wizard.step < 4"
+                  :disabled="wizard.step === 1 && !wizard.scenario"
+                  @click="wizardNext">next →</button>
+          <button class="btn-tool accent" v-if="wizard.step === 4" @click="wizardStart">▶ start editing</button>
         </div>
       </div>
     </div>

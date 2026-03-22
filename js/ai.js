@@ -62,6 +62,7 @@
     const headers = { 'Content-Type': 'application/json' };
     if (c.apiKey) headers['Authorization'] = `Bearer ${c.apiKey}`;
 
+    // ── Attempt 1: streaming ────────────────────────────────────────────────
     let resp;
     try {
       resp = await fetch(url, {
@@ -78,8 +79,35 @@
       });
     } catch (e) {
       if (e.name === 'AbortError') return;
-      if (onError) onError(e.message);
-      return;
+      // Network error → retry once with stream: false
+      try {
+        resp = await fetch(url, {
+          method: 'POST',
+          headers,
+          signal,
+          body: JSON.stringify({
+            model: c.model,
+            messages,
+            stream: false,
+            temperature: 0.4,
+            max_tokens: 1024,
+          }),
+        });
+        if (!resp.ok) {
+          const text = await resp.text().catch(() => '');
+          if (onError) onError(`HTTP ${resp.status}: ${text.slice(0, 120)}`);
+          return;
+        }
+        const json = await resp.json();
+        const content = json.choices?.[0]?.message?.content || '';
+        if (onChunk) onChunk(content);
+        if (onDone) onDone();
+        return;
+      } catch (e2) {
+        if (e2.name === 'AbortError') return;
+        if (onError) onError(e2.message);
+        return;
+      }
     }
 
     if (!resp.ok) {
@@ -88,6 +116,21 @@
       return;
     }
 
+    // ── Check Content-Type: if not SSE, treat as plain JSON completion ───────
+    const ct = resp.headers.get('content-type') || '';
+    if (!ct.includes('text/event-stream')) {
+      try {
+        const json = await resp.json();
+        const content = json.choices?.[0]?.message?.content || '';
+        if (onChunk) onChunk(content);
+        if (onDone) onDone();
+      } catch (e) {
+        if (onError) onError('Failed to parse JSON response: ' + e.message);
+      }
+      return;
+    }
+
+    // ── SSE streaming ────────────────────────────────────────────────────────
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
