@@ -197,15 +197,28 @@
   // ── Prompts ───────────────────────────────────────────────────────────────
 
   const PROMPTS = {
+    title(yaml) {
+      return [
+        {
+          role: 'system',
+          content: 'You are a Sigma detection rule naming expert. Suggest 4 concise, specific rule titles. Follow conventions like "Suspicious X via Y", "Potential X Execution", or "X Abuse by Y". Return ONLY a JSON array of strings — no explanation, no markdown.',
+        },
+        {
+          role: 'user',
+          content: `Suggest 4 alternative titles for this Sigma rule. Return a JSON array of strings only:\n\n${yaml}`,
+        },
+      ];
+    },
+
     describe(yaml) {
       return [
         {
           role: 'system',
-          content: 'You are a cybersecurity expert specializing in SIEM detection engineering. Write concise, accurate Sigma rule descriptions. Respond with plain text only — no JSON, no markdown headers, no bullet points. 2–4 sentences max.',
+          content: 'You are a cybersecurity expert specializing in SIEM detection engineering. Generate 3 alternative description paragraphs for a Sigma detection rule. Each should be 2–3 sentences, plain text, technical and specific. Return ONLY a JSON array of strings — no explanation, no markdown headers.',
         },
         {
           role: 'user',
-          content: `Write a clear, technical description for this Sigma detection rule:\n\n${yaml}`,
+          content: `Generate 3 description variants for this Sigma rule. Return a JSON array of strings only:\n\n${yaml}`,
         },
       ];
     },
@@ -232,6 +245,42 @@
         {
           role: 'user',
           content: `Suggest MITRE ATT&CK technique IDs for this Sigma rule. Return a JSON array of technique IDs only:\n\n${yaml}`,
+        },
+      ];
+    },
+
+    detection(yaml) {
+      return [
+        {
+          role: 'system',
+          content: `You are a senior Sigma detection engineer. Given a Sigma rule, suggest improvements or additions to the detection section. Return ONLY a JSON object with this structure:
+{
+  "groups": [
+    {
+      "name": "selection",
+      "rationale": "why this group catches the behavior",
+      "fields": [
+        { "field": "FieldName", "modifier": "contains", "values": ["val1", "val2"], "note": "why this field/value" }
+      ]
+    }
+  ],
+  "filters": [
+    {
+      "name": "filter_legit",
+      "rationale": "what this filters out",
+      "fields": [
+        { "field": "FieldName", "modifier": "", "values": ["legitimate_val"], "note": "context" }
+      ]
+    }
+  ],
+  "condition_suggestion": "selection and not filter_legit",
+  "summary": "one sentence explaining the overall improvement"
+}
+Return ONLY valid JSON. filters array may be empty. Only suggest fields that exist in real Windows/Linux/network logs.`,
+        },
+        {
+          role: 'user',
+          content: `Suggest detection improvements for this Sigma rule. Return JSON only:\n\n${yaml}`,
         },
       ];
     },

@@ -71,8 +71,23 @@
       <div v-show="activeTab === 'metadata'" class="tab-content">
 
         <div class="field-group">
-          <label>Title <span class="req">*</span></label>
+          <label>Title <span class="req">*</span> <button class="btn-ai-spark" @click="aiGenerate('title')" :class="{loading: aiState.title.loading}" :title="aiAvailable ? 'AI: suggest titles' : 'Configure AI endpoint in Settings'">✨</button></label>
           <input v-model="rule.title" class="inp" placeholder="e.g. Suspicious PowerShell Encoded Command" />
+        </div>
+
+        <div class="ai-inline-panel ai-chips-panel" v-if="aiState.title.visible || aiState.title.loading">
+          <div class="ai-panel-header">
+            <span class="mono label-xs">✨ AI TITLE SUGGESTIONS</span>
+            <button class="btn-icon" @click="aiDismiss('title')">×</button>
+          </div>
+          <div v-if="aiState.title.loading" class="ai-streaming-text streaming">{{ aiState.title.text || 'Thinking…' }}</div>
+          <div v-else-if="aiState.title.error" class="ai-error">{{ aiState.title.error }}</div>
+          <div v-else class="ai-fp-list">
+            <div v-for="(t, i) in aiState.title.suggestions" :key="i" class="ai-fp-item">
+              <span>{{ t }}</span>
+              <button class="btn-tool small accent" @click="acceptTitle(t); aiDismiss('title')">use</button>
+            </div>
+          </div>
         </div>
 
         <div class="field-row">
@@ -98,21 +113,23 @@
         </div>
 
         <div class="field-group">
-          <label>Description <button class="btn-ai-spark" @click="aiGenerate('describe')" :class="{loading: aiState.describe.loading}" :title="aiAvailable ? 'AI: generate description' : 'Configure AI endpoint in Settings'">✨</button></label>
+          <label>Description <button class="btn-ai-spark" @click="aiGenerate('describe')" :class="{loading: aiState.describe.loading}" :title="aiAvailable ? 'AI: suggest descriptions' : 'Configure AI endpoint in Settings'">✨</button></label>
           <textarea v-model="rule.description" class="inp" rows="3"
                     placeholder="What does this rule detect and why is it suspicious?"></textarea>
         </div>
 
-        <div class="ai-inline-panel" v-if="aiState.describe.visible || aiState.describe.loading">
+        <div class="ai-inline-panel ai-chips-panel" v-if="aiState.describe.visible || aiState.describe.loading">
           <div class="ai-panel-header">
-            <span class="mono label-xs">✨ AI SUGGESTION</span>
+            <span class="mono label-xs">✨ AI DESCRIPTION SUGGESTIONS</span>
             <button class="btn-icon" @click="aiDismiss('describe')">×</button>
           </div>
-          <div class="ai-streaming-text" :class="{ streaming: aiState.describe.loading }">{{ aiState.describe.text || 'Generating…' }}</div>
-          <div v-if="aiState.describe.error" class="ai-error">{{ aiState.describe.error }}</div>
-          <div class="ai-actions" v-if="!aiState.describe.loading && aiState.describe.text && !aiState.describe.error">
-            <button class="btn-tool small accent" @click="acceptAiSuggestion('describe')">Accept</button>
-            <button class="btn-tool small" @click="aiDismiss('describe')">Dismiss</button>
+          <div v-if="aiState.describe.loading" class="ai-streaming-text streaming">{{ aiState.describe.text || 'Generating…' }}</div>
+          <div v-else-if="aiState.describe.error" class="ai-error">{{ aiState.describe.error }}</div>
+          <div v-else class="ai-fp-list">
+            <div v-for="(d, i) in aiState.describe.suggestions" :key="i" class="ai-fp-item ai-desc-item">
+              <span>{{ d }}</span>
+              <button class="btn-tool small accent" @click="acceptDescription(d); aiDismiss('describe')">use</button>
+            </div>
           </div>
         </div>
 
@@ -277,7 +294,81 @@
           </div>
         </div>
 
-        <button class="btn-add group-add" @click="addGroup">+ add selection group</button>
+        <div class="detection-ai-bar">
+          <button class="btn-add group-add" @click="addGroup">+ add selection group</button>
+          <button class="btn-tool btn-ai small" @click="aiGenerate('detection')" :class="{loading: aiState.detection.loading}" :title="aiAvailable ? 'AI: suggest detection fields' : 'Configure AI endpoint in Settings'">✨ suggest detection</button>
+        </div>
+
+        <!-- AI Detection suggestions panel -->
+        <div class="ai-inline-panel ai-detection-panel" v-if="aiState.detection.visible || aiState.detection.loading">
+          <div class="ai-panel-header">
+            <span class="mono label-xs">✨ AI DETECTION SUGGESTIONS</span>
+            <button class="btn-icon" @click="aiDismiss('detection')">×</button>
+          </div>
+          <div v-if="aiState.detection.loading" class="ai-streaming-text streaming">{{ aiState.detection.text || 'Analysing rule…' }}</div>
+          <div v-else-if="aiState.detection.error" class="ai-error">{{ aiState.detection.error }}</div>
+          <template v-else-if="aiState.detection.suggestions.length">
+            <p class="ai-detection-summary" v-if="aiState.detection.summary">{{ aiState.detection.summary }}</p>
+
+            <!-- Suggested groups -->
+            <div v-if="aiState.detection.suggestions[0]?.groups?.length" class="ai-det-section">
+              <span class="mono label-xs ai-det-section-label">SELECTION GROUPS</span>
+              <div v-for="(g, gi) in aiState.detection.suggestions[0].groups" :key="gi" class="ai-det-group">
+                <div class="ai-det-group-header">
+                  <code class="ai-det-name">{{ g.name }}</code>
+                  <span class="ai-det-rationale">{{ g.rationale }}</span>
+                  <button class="btn-tool small accent" @click="acceptDetectionGroup(g, false)">+ add group</button>
+                </div>
+                <div class="ai-det-fields">
+                  <div v-for="(f, fi) in g.fields" :key="fi" class="ai-det-field">
+                    <code>{{ f.field }}<span v-if="f.modifier">|{{ f.modifier }}</span></code>
+                    <span class="ai-det-values">{{ Array.isArray(f.values) ? f.values.join(', ') : f.values }}</span>
+                    <span class="ai-det-note" v-if="f.note">— {{ f.note }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Suggested filters -->
+            <div v-if="aiState.detection.suggestions[0]?.filters?.length" class="ai-det-section">
+              <span class="mono label-xs ai-det-section-label">FILTER GROUPS</span>
+              <div v-for="(f, fi) in aiState.detection.suggestions[0].filters" :key="fi" class="ai-det-group">
+                <div class="ai-det-group-header">
+                  <code class="ai-det-name">{{ f.name }}</code>
+                  <span class="ai-det-rationale">{{ f.rationale }}</span>
+                  <button class="btn-tool small" @click="acceptDetectionGroup(f, true)">+ add filter</button>
+                </div>
+                <div class="ai-det-fields">
+                  <div v-for="(field, ffi) in f.fields" :key="ffi" class="ai-det-field">
+                    <code>{{ field.field }}<span v-if="field.modifier">|{{ field.modifier }}</span></code>
+                    <span class="ai-det-values">{{ Array.isArray(field.values) ? field.values.join(', ') : field.values }}</span>
+                    <span class="ai-det-note" v-if="field.note">— {{ field.note }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Condition suggestion -->
+            <div v-if="aiState.detection.suggestions[0]?.condition_suggestion" class="ai-det-condition">
+              <span class="mono label-xs">SUGGESTED CONDITION</span>
+              <code>{{ aiState.detection.suggestions[0].condition_suggestion }}</code>
+              <button class="btn-tool small" @click="acceptDetectionCondition(aiState.detection.suggestions[0].condition_suggestion)">use</button>
+            </div>
+
+            <!-- Legend -->
+            <div class="annot-legend" style="margin-top:0.5rem">
+              <span class="legend-label mono label-xs">LEGEND</span>
+              <span class="legend-item" style="color:#4ade80">■ selection group</span>
+              <span class="legend-item" style="color:#facc15">■ filter group</span>
+              <span class="legend-item" style="color:#60a5fa">■ condition</span>
+            </div>
+
+            <div class="ai-actions">
+              <button class="btn-tool small accent" @click="acceptAllDetection">Accept all</button>
+              <button class="btn-tool small" @click="aiDismiss('detection')">Dismiss</button>
+            </div>
+          </template>
+        </div>
 
         <div class="separator"></div>
 

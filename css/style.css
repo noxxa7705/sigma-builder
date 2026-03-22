@@ -786,6 +786,71 @@ select.level-critical       { color: var(--lvl-critical); }
   font-size: 0.8rem; gap: 0.5rem;
 }
 
+/* description suggestion items are a bit taller since text wraps */
+.ai-desc-item { align-items: flex-start; }
+.ai-desc-item span { line-height: 1.5; flex: 1; }
+
+/* detection ai bar */
+.detection-ai-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+/* detection ai panel */
+.ai-detection-panel { margin-top: 0.75rem; }
+.ai-detection-summary {
+  font-size: 0.8rem; color: var(--text-muted); margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem; background: var(--bg-3); border-radius: var(--r-sm);
+  border-left: 2px solid #60a5fa;
+}
+.ai-det-section { margin-bottom: 0.75rem; }
+.ai-det-section-label {
+  display: block; margin-bottom: 0.35rem;
+  color: var(--text-muted); letter-spacing: 0.06em;
+}
+.ai-det-group {
+  background: var(--bg-3); border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: 0.5rem 0.75rem; margin-bottom: 0.35rem;
+}
+.ai-det-group-header {
+  display: flex; align-items: center; gap: 0.5rem;
+  margin-bottom: 0.4rem; flex-wrap: wrap;
+}
+.ai-det-name {
+  font-family: var(--font-mono); font-size: 0.75rem;
+  color: #4ade80; background: rgba(74,222,128,0.08);
+  border: 1px solid rgba(74,222,128,0.2); border-radius: 3px; padding: 1px 6px;
+}
+/* filter groups use yellow accent */
+.ai-det-section:nth-of-type(2) .ai-det-name {
+  color: #facc15; background: rgba(250,204,21,0.08);
+  border-color: rgba(250,204,21,0.2);
+}
+.ai-det-rationale { font-size: 0.75rem; color: var(--text-muted); flex: 1; }
+.ai-det-fields { display: flex; flex-direction: column; gap: 0.2rem; }
+.ai-det-field {
+  display: flex; align-items: baseline; gap: 0.5rem;
+  font-size: 0.75rem; padding: 0.15rem 0;
+}
+.ai-det-field code {
+  font-family: var(--font-mono); font-size: 0.72rem;
+  color: #93c5fd; white-space: nowrap;
+}
+.ai-det-values {
+  color: var(--text-muted); font-family: var(--font-mono); font-size: 0.7rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px;
+}
+.ai-det-note { color: var(--text-dim); font-size: 0.7rem; font-style: italic; }
+.ai-det-condition {
+  display: flex; align-items: center; gap: 0.5rem;
+  background: rgba(96,165,250,0.07); border: 1px solid rgba(96,165,250,0.2);
+  border-radius: var(--r-sm); padding: 0.4rem 0.75rem; margin-bottom: 0.5rem;
+}
+.ai-det-condition .mono { margin-right: 0.25rem; color: var(--text-muted); }
+.ai-det-condition code {
+  font-family: var(--font-mono); font-size: 0.78rem; color: #93c5fd; flex: 1;
+}
+
 .ai-test-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 .ai-test-result { font-family: var(--font-mono); font-size: 0.72rem; }
 .ai-test-result.ok  { color: var(--ok); }

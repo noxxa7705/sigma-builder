@@ -817,9 +817,11 @@ createApp({
                         suggestions: [], score: 0, summary: '', annotations: [] });
     }
     const aiState = reactive({
+      title:          mkAiState(),
       describe:       mkAiState(),
       falsepositives: mkAiState(),
       tags:           mkAiState(),
+      detection:      mkAiState(),
       explain:        mkAiState(),
       review:         mkAiState(),
     });
@@ -885,7 +887,20 @@ createApp({
         onDone() {
           s.loading = false;
           const raw = s.rawText;
-          if (feature === 'tags') {
+          if (feature === 'title') {
+            const parsed = AI.parseJsonFromText(raw);
+            s.suggestions = Array.isArray(parsed) ? parsed.filter(t => typeof t === 'string') : [];
+            if (!s.suggestions.length) s.error = 'Could not parse title suggestions.';
+          } else if (feature === 'describe') {
+            const parsed = AI.parseJsonFromText(raw);
+            s.suggestions = Array.isArray(parsed) ? parsed.filter(t => typeof t === 'string') : [];
+            // fallback: if model returned plain text instead of JSON, treat as single suggestion
+            if (!s.suggestions.length) {
+              const plain = raw.trim();
+              if (plain) s.suggestions = [plain];
+              else s.error = 'Could not parse description suggestions.';
+            }
+          } else if (feature === 'tags') {
             const parsed = AI.parseJsonFromText(raw);
             s.suggestions = Array.isArray(parsed) ? parsed.map(t => `attack.${t.toLowerCase()}`) : [];
             if (!s.suggestions.length) s.error = 'Could not parse tag suggestions.';
@@ -893,6 +908,14 @@ createApp({
             const parsed = AI.parseJsonFromText(raw);
             s.suggestions = Array.isArray(parsed) ? parsed : [];
             if (!s.suggestions.length) s.error = 'Could not parse false positive suggestions.';
+          } else if (feature === 'detection') {
+            const parsed = AI.parseJsonFromText(raw);
+            if (parsed && (parsed.groups || parsed.filters)) {
+              s.suggestions = [parsed]; // store parsed object in suggestions[0]
+              s.summary = parsed.summary || '';
+            } else {
+              s.error = 'Could not parse detection suggestions.';
+            }
           } else if (feature === 'review') {
             const parsed = AI.parseJsonFromText(raw);
             if (parsed && parsed.summary) {
@@ -904,7 +927,7 @@ createApp({
               s.error = 'Could not parse review. Raw: ' + raw.slice(0, 200);
             }
           }
-          // describe and explain just use s.text as-is
+          // explain just uses s.text as-is
         },
         onError(err) {
           s.loading = false;
@@ -920,6 +943,57 @@ createApp({
         aiDismiss('describe');
         notify('✓ Description updated');
       }
+    }
+
+    function acceptTitle(title) {
+      rule.title = title;
+      notify('✓ Title updated');
+    }
+
+    function acceptDescription(desc) {
+      rule.description = desc;
+      notify('✓ Description updated');
+    }
+
+    // Apply a single AI-suggested detection group or filter to the rule
+    function acceptDetectionGroup(group, isFilter) {
+      const gName = group.name || (isFilter ? 'filter' : 'selection');
+      // Check if a group with this name already exists
+      const existing = rule.detection.groups.find(g => g.name === gName);
+      if (existing) {
+        // Merge fields in
+        group.fields.forEach(f => {
+          existing.fields.push({ id: uuid4(), field: f.field, modifier: f.modifier || '', values: f.values || [''] });
+        });
+        notify(`✓ Merged into group "${gName}"`);
+      } else {
+        // Add as new group
+        rule.detection.groups.push({
+          id: uuid4(),
+          name: gName,
+          type: 'fields',
+          keywords: [''],
+          fields: group.fields.map(f => ({
+            id: uuid4(), field: f.field, modifier: f.modifier || '', values: f.values || ['']
+          })),
+        });
+        notify(`✓ Added group "${gName}"`);
+      }
+    }
+
+    function acceptDetectionCondition(cond) {
+      rule.detection.condition = cond;
+      notify('✓ Condition updated');
+    }
+
+    function acceptAllDetection() {
+      const d = aiState.detection.suggestions[0];
+      if (!d) return;
+      (d.groups || []).forEach(g => acceptDetectionGroup(g, false));
+      (d.filters || []).forEach(f => acceptDetectionGroup(f, true));
+      if (d.condition_suggestion) acceptDetectionCondition(d.condition_suggestion);
+      aiDismiss('detection');
+      notify('✓ Detection suggestions applied');
     }
 
     function hasAiTag(tag) { return rule.tags.includes(tag); }
@@ -1035,6 +1109,8 @@ createApp({
       aiAvailable, aiState, aiEndpoint, aiModel, aiApiKey,
       aiTesting, aiTestResult, saveAiConfig, testAiConnection,
       aiGenerate, aiDismiss, acceptAiSuggestion,
+      acceptTitle, acceptDescription,
+      acceptDetectionGroup, acceptDetectionCondition, acceptAllDetection,
       hasAiTag, acceptAiTag, acceptAllAiTags,
       acceptFP, acceptAllFPs, scoreClass,
       annotatedYamlSegments, renderMarkdown,
