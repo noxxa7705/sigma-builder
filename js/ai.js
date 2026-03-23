@@ -12,7 +12,7 @@
     if (!raw || !raw.trim()) return '';
     let s = raw.trim();
     // 1. Prepend http:// if no protocol
-    if (!/^https?:\/\//i.test(s)) {
+    if (!/^https?:\/\//.test(s)) {
       s = 'http://' + s;
     }
     // 2. Trim trailing slashes
@@ -294,7 +294,7 @@
     if (onDone) onDone();
   }
 
-  // ── JSON extractor ────────────────────────────────────────────────────────
+  // ── JSON extractor with smart bracket matching ──────────────────────────
 
   function parseJsonFromText(text) {
     if (!text) return null;
@@ -311,7 +311,7 @@
       try { return JSON.parse(fence[1].trim()); } catch (_) {}
     }
     
-    // Find first [ or { and try from there
+    // Find first [ or { and extract properly matched JSON from there
     const arrIdx = cleanedText.indexOf('[');
     const objIdx = cleanedText.indexOf('{');
     let start = -1;
@@ -319,12 +319,46 @@
     else if (objIdx !== -1) start = objIdx;
     
     if (start !== -1) {
-      // Try to find matching end bracket
       const opener = cleanedText[start];
       const closer = opener === '[' ? ']' : '}';
-      let end = cleanedText.lastIndexOf(closer);
       
-      // Try from first JSON to last matching bracket
+      // Scan forward from start, tracking bracket depth to find actual closing bracket
+      let depth = 0;
+      let end = -1;
+      let inString = false;
+      let escaped = false;
+      
+      for (let i = start; i < cleanedText.length; i++) {
+        const ch = cleanedText[i];
+        
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        
+        if (ch === '\\') {
+          escaped = true;
+          continue;
+        }
+        
+        if (ch === '"') {
+          inString = !inString;
+          continue;
+        }
+        
+        if (!inString) {
+          if (ch === opener) depth++;
+          else if (ch === closer) {
+            depth--;
+            if (depth === 0) {
+              end = i;
+              break;
+            }
+          }
+        }
+      }
+      
+      // Try the properly matched JSON
       if (end > start) {
         try { return JSON.parse(cleanedText.slice(start, end + 1)); } catch (_) {}
       }
