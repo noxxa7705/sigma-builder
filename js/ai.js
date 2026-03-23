@@ -306,7 +306,7 @@
     try { return JSON.parse(cleanedText); } catch (_) {}
     
     // Extract from ```json ... ``` block
-    const fence = cleanedText.match(/```(?:json)?\\s*([\\s\\S]*?)```/);
+    const fence = cleanedText.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (fence) {
       try { return JSON.parse(fence[1].trim()); } catch (_) {}
     }
