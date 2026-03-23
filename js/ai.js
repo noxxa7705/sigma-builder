@@ -144,7 +144,7 @@
 
   // ── Streaming runner ──────────────────────────────────────────────────────
 
-  async function runAI(messages, { signal, onChunk, onDone, onError } = {}) {
+  async function runAI(messages, { signal, onChunk, onDone, onError, stream = true } = {}) {
     const c = getConfig();
     if (!c.endpoint || !c.model) {
       if (onError) onError('AI not configured.');
@@ -154,7 +154,7 @@
     const headers = { 'Content-Type': 'application/json' };
     if (c.apiKey) headers['Authorization'] = `Bearer ${c.apiKey}`;
 
-    // ── Attempt 1: streaming ────────────────────────────────────────────────
+    // ── Attempt 1: use requested stream mode ────────────────────────────────
     let resp;
     try {
       resp = await fetch(url, {
@@ -164,7 +164,7 @@
         body: JSON.stringify({
           model: c.model,
           messages,
-          stream: true,
+          stream,
           temperature: c.advanced?.temperature ?? 0.4,
           max_tokens: c.advanced?.maxTokens ?? 1024,
         }),

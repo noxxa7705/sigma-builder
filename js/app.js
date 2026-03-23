@@ -1277,8 +1277,12 @@ createApp({
       const ctrl = new AbortController();
       s._abort = ctrl;
 
+      // Disable streaming for list-based features to ensure atomic JSON responses
+      const streamMode = !isListFeature; // false for list features, true for others
+
       AI.runAI(messages, {
         signal: ctrl.signal,
+        stream: streamMode,
         onChunk(chunk) {
           s.rawText += chunk;
           // For streaming display — show raw text while loading
