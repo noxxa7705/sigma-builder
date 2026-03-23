@@ -1418,7 +1418,7 @@ createApp({
     }
 
     // Apply a single AI-suggested detection group or filter to the rule
-    function acceptDetectionGroup(group, isFilter) {
+    function acceptDetectionGroup(group, isFilter, suggestionIndex = -1) {
       const gName = group.name || (isFilter ? 'filter' : 'selection');
       // Check if a group with this name already exists
       const existing = rule.detection.groups.find(g => g.name === gName);
@@ -1431,7 +1431,7 @@ createApp({
         if (group.rationale && !existing._aiRationale) {
           existing._aiRationale = group.rationale;
         }
-        notify(`✓ Merged into group "${gName}"`);
+        notify(`✓ Merged into group \"${gName}\"`);
       } else {
         // Add as new group
         rule.detection.groups.push({
@@ -1444,7 +1444,20 @@ createApp({
           })),
           _aiRationale: group.rationale || '', // Store AI rationale as comment
         });
-        notify(`✓ Added group "${gName}"`);
+        notify(`✓ Added group \"${gName}\"`);
+      }
+
+      // Remove from AI suggestions if clicked from suggestion panel
+      if (suggestionIndex >= 0) {
+        if (isFilter) {
+          aiState.detection.suggestions[0].filters.splice(suggestionIndex, 1);
+        } else {
+          aiState.detection.suggestions[0].groups.splice(suggestionIndex, 1);
+        }
+        // If no more suggestions left, dismiss the panel
+        if (!aiState.detection.suggestions[0].groups?.length && !aiState.detection.suggestions[0].filters?.length) {
+          aiDismiss('detection');
+        }
       }
     }
 

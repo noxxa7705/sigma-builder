@@ -326,7 +326,7 @@
                 <div class="ai-det-group-header">
                   <code class="ai-det-name">{{ g.name }}</code>
                   <span class="ai-det-rationale">{{ g.rationale }}</span>
-                  <button class="btn-tool small" @click="acceptDetectionGroup(g, false)">+ add group</button>
+                  <button class="btn-tool small" @click="acceptDetectionGroup(g, false, gi)">+ add group</button>
                 </div>
                 <div class="ai-det-fields">
                   <div v-for="(f, fi) in g.fields" :key="fi" class="ai-det-field">
@@ -345,7 +345,7 @@
                 <div class="ai-det-group-header">
                   <code class="ai-det-name">{{ f.name }}</code>
                   <span class="ai-det-rationale">{{ f.rationale }}</span>
-                  <button class="btn-tool small" @click="acceptDetectionGroup(f, true)">+ add filter</button>
+                  <button class="btn-tool small" @click="acceptDetectionGroup(f, true, fi)">+ add filter</button>
                 </div>
                 <div class="ai-det-fields">
                   <div v-for="(field, ffi) in f.fields" :key="ffi" class="ai-det-field">
