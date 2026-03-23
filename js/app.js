@@ -1123,6 +1123,18 @@ createApp({
       'badge-idle':    !aiEndpoint.value || aiLiveStatus.value === 'idle',
     }));
 
+    const AI_UI = {
+      title:          { heading: '✨ AI TITLE SUGGESTIONS',            loading: 'Generating suggestions…' },
+      describe:       { heading: '✨ AI DESCRIPTION SUGGESTIONS',      loading: 'Generating suggestions…' },
+      falsepositives: { heading: '✨ AI FALSE POSITIVE SUGGESTIONS',   loading: 'Generating suggestions…' },
+      tags:           { heading: '✨ AI TAG SUGGESTIONS',              loading: 'Generating suggestions…' },
+      detection:      { heading: '✨ AI DETECTION SUGGESTIONS',        loading: 'Generating suggestions…' },
+      explain:        { heading: '✨ RULE EXPLANATION',                loading: 'Generating explanation…' },
+      review:         { heading: '✨ RULE REVIEW',                     loading: 'Reviewing rule…' },
+    };
+    function aiPanelHeading(feature) { return AI_UI[feature]?.heading || '✨ AI SUGGESTIONS'; }
+    function aiLoadingLabel(feature) { return AI_UI[feature]?.loading || 'Generating…'; }
+
     const aiModelRecommendation = computed(() => {
       const m = aiModel.value || '';
       if (!m) return '';
@@ -1560,6 +1572,7 @@ createApp({
       aiEndpoint, aiModel, aiApiKey,
       aiAvailableModels, aiLiveStatus, aiLiveError,
       aiLiveBadgeText, aiLiveBadgeClass, aiModelRecommendation,
+      aiPanelHeading, aiLoadingLabel,
       aiShowAdvanced, aiAdvTemp, aiAdvMaxTokens,
       onEndpointInput, onAiSettingChange, refreshModels, saveAiConfig,
       aiGenerate, aiDismiss, acceptAiSuggestion,

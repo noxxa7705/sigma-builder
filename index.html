@@ -84,15 +84,15 @@
 
         <div class="ai-inline-panel ai-chips-panel" v-if="aiState.title.visible || aiState.title.loading">
           <div class="ai-panel-header">
-            <span class="mono label-xs">✨ AI TITLE SUGGESTIONS</span>
+            <span class="mono label-xs">{{ aiPanelHeading('title') }}</span>
             <button class="btn-icon" @click="aiDismiss('title')">×</button>
           </div>
-          <div v-if="aiState.title.loading" class="ai-streaming-text streaming">{{ aiState.title.text || 'Thinking…' }}</div>
+          <div v-if="aiState.title.loading" class="ai-streaming-text streaming">{{ aiState.title.text || aiLoadingLabel('title') }}</div>
           <div v-else-if="aiState.title.error" class="ai-error">{{ aiState.title.error }}</div>
           <div v-else class="ai-fp-list">
             <div v-for="(t, i) in aiState.title.suggestions" :key="i" class="ai-fp-item">
               <span>{{ t }}</span>
-              <button class="btn-tool small accent" @click="acceptTitle(t); aiDismiss('title')">use</button>
+              <button class="btn-tool small accent" @click="acceptTitle(t); aiDismiss('title')">Use</button>
             </div>
           </div>
         </div>
@@ -127,15 +127,15 @@
 
         <div class="ai-inline-panel ai-chips-panel" v-if="aiState.describe.visible || aiState.describe.loading">
           <div class="ai-panel-header">
-            <span class="mono label-xs">✨ AI DESCRIPTION SUGGESTIONS</span>
+            <span class="mono label-xs">{{ aiPanelHeading('describe') }}</span>
             <button class="btn-icon" @click="aiDismiss('describe')">×</button>
           </div>
-          <div v-if="aiState.describe.loading" class="ai-streaming-text streaming">{{ aiState.describe.text || 'Generating…' }}</div>
+          <div v-if="aiState.describe.loading" class="ai-streaming-text streaming">{{ aiState.describe.text || aiLoadingLabel('describe') }}</div>
           <div v-else-if="aiState.describe.error" class="ai-error">{{ aiState.describe.error }}</div>
           <div v-else class="ai-fp-list">
             <div v-for="(d, i) in aiState.describe.suggestions" :key="i" class="ai-fp-item ai-desc-item">
               <span>{{ d }}</span>
-              <button class="btn-tool small accent" @click="acceptDescription(d); aiDismiss('describe')">use</button>
+              <button class="btn-tool small accent" @click="acceptDescription(d); aiDismiss('describe')">Use</button>
             </div>
           </div>
         </div>
@@ -175,15 +175,15 @@
 
         <div class="ai-inline-panel" v-if="aiState.falsepositives.visible || aiState.falsepositives.loading">
           <div class="ai-panel-header">
-            <span class="mono label-xs">✨ AI SUGGESTIONS</span>
+            <span class="mono label-xs">{{ aiPanelHeading('falsepositives') }}</span>
             <button class="btn-icon" @click="aiDismiss('falsepositives')">×</button>
           </div>
-          <div v-if="aiState.falsepositives.loading" class="ai-streaming-text streaming">{{ aiState.falsepositives.text || 'Thinking…' }}</div>
+          <div v-if="aiState.falsepositives.loading" class="ai-streaming-text streaming">{{ aiState.falsepositives.text || aiLoadingLabel('falsepositives') }}</div>
           <div v-else-if="aiState.falsepositives.error" class="ai-error">{{ aiState.falsepositives.error }}</div>
           <div v-else class="ai-fp-list">
             <div v-for="(fp, i) in aiState.falsepositives.suggestions" :key="i" class="ai-fp-item">
               <span>{{ fp }}</span>
-              <button class="btn-tool small" @click="acceptFP(fp)">+ add</button>
+              <button class="btn-tool small" @click="acceptFP(fp)">Add</button>
             </div>
           </div>
           <div class="ai-actions" v-if="!aiState.falsepositives.loading && aiState.falsepositives.suggestions.length">
@@ -309,10 +309,10 @@
         <!-- AI Detection suggestions panel -->
         <div class="ai-inline-panel ai-detection-panel" v-if="aiState.detection.visible || aiState.detection.loading">
           <div class="ai-panel-header">
-            <span class="mono label-xs">✨ AI DETECTION SUGGESTIONS</span>
+            <span class="mono label-xs">{{ aiPanelHeading('detection') }}</span>
             <button class="btn-icon" @click="aiDismiss('detection')">×</button>
           </div>
-          <div v-if="aiState.detection.loading" class="ai-streaming-text streaming">{{ aiState.detection.text || 'Analysing rule…' }}</div>
+          <div v-if="aiState.detection.loading" class="ai-streaming-text streaming">{{ aiState.detection.text || aiLoadingLabel('detection') }}</div>
           <div v-else-if="aiState.detection.error" class="ai-error">{{ aiState.detection.error }}</div>
           <template v-else-if="aiState.detection.suggestions.length">
             <p class="ai-detection-summary" v-if="aiState.detection.summary">{{ aiState.detection.summary }}</p>
@@ -359,7 +359,7 @@
             <div v-if="aiState.detection.suggestions[0]?.condition_suggestion" class="ai-det-condition">
               <span class="mono label-xs">SUGGESTED CONDITION</span>
               <code>{{ aiState.detection.suggestions[0].condition_suggestion }}</code>
-              <button class="btn-tool small" @click="acceptDetectionCondition(aiState.detection.suggestions[0].condition_suggestion)">use</button>
+              <button class="btn-tool small" @click="acceptDetectionCondition(aiState.detection.suggestions[0].condition_suggestion)">Use</button>
             </div>
 
             <!-- Legend -->
@@ -417,10 +417,10 @@
 
         <div class="ai-tag-suggest" v-if="aiState.tags.visible || aiState.tags.loading">
           <div class="ai-panel-header">
-            <span class="mono label-xs">✨ AI TAG SUGGESTIONS</span>
+            <span class="mono label-xs">{{ aiPanelHeading('tags') }}</span>
             <button class="btn-icon" @click="aiDismiss('tags')">×</button>
           </div>
-          <div v-if="aiState.tags.loading" class="ai-streaming-text">{{ aiState.tags.text || 'Thinking…' }}</div>
+          <div v-if="aiState.tags.loading" class="ai-streaming-text">{{ aiState.tags.text || aiLoadingLabel('tags') }}</div>
           <div v-else-if="aiState.tags.error" class="ai-error">{{ aiState.tags.error }}</div>
           <div v-else class="ai-tag-chips">
             <button v-for="t in aiState.tags.suggestions" :key="t"
@@ -520,21 +520,21 @@
         <!-- AI Explain panel -->
         <div class="ai-inline-panel ai-explain-panel" v-if="aiState.explain.visible || aiState.explain.loading">
           <div class="ai-panel-header">
-            <span class="mono label-xs">✨ RULE EXPLANATION</span>
+            <span class="mono label-xs">{{ aiPanelHeading('explain') }}</span>
             <button class="btn-icon" @click="aiDismiss('explain')">×</button>
           </div>
-          <div class="ai-markdown-text" :class="{ streaming: aiState.explain.loading }" v-html="renderMarkdown(aiState.explain.text)"></div>
+          <div class="ai-markdown-text" :class="{ streaming: aiState.explain.loading }" v-html="renderMarkdown(aiState.explain.text || (aiState.explain.loading ? aiLoadingLabel('explain') : ''))"></div>
           <div v-if="aiState.explain.error" class="ai-error">{{ aiState.explain.error }}</div>
         </div>
 
         <!-- AI Review panel with annotated YAML -->
         <div class="ai-inline-panel ai-review-panel" v-if="aiState.review.visible || aiState.review.loading">
           <div class="ai-panel-header">
-            <span class="mono label-xs">✨ RULE REVIEW</span>
+            <span class="mono label-xs">{{ aiPanelHeading('review') }}</span>
             <span v-if="aiState.review.score" class="review-score" :class="scoreClass(aiState.review.score)">{{ aiState.review.score }}/10</span>
             <button class="btn-icon" @click="aiDismiss('review')">×</button>
           </div>
-          <div v-if="aiState.review.loading" class="ai-streaming-text streaming">{{ aiState.review.rawText || 'Analysing…' }}</div>
+          <div v-if="aiState.review.loading" class="ai-streaming-text streaming">{{ aiState.review.rawText || aiLoadingLabel('review') }}</div>
           <div v-else-if="aiState.review.error" class="ai-error">{{ aiState.review.error }}</div>
           <template v-else>
             <p class="review-summary" v-if="aiState.review.summary">{{ aiState.review.summary }}</p>
@@ -842,7 +842,7 @@
                 ✨ brainstorm draft
               </button>
             </div>
-            <div v-if="wizard.brainstormLoading" class="ai-streaming-text streaming">{{ wizard.brainstormText || 'Thinking…' }}</div>
+            <div v-if="wizard.brainstormLoading" class="ai-streaming-text streaming">{{ wizard.brainstormText || 'Generating draft…' }}</div>
             <div v-else-if="wizard.brainstormPlan" class="ai-fp-list">
               <div class="ai-fp-item ai-desc-item">
                 <span>
@@ -889,7 +889,7 @@
             </label>
             <textarea v-model="wizard.description" class="inp" rows="3"
                       placeholder="Optional — what does this rule detect?"></textarea>
-            <div v-if="wizard.aiDescLoading" class="ai-streaming-text streaming" style="margin-top:0.35rem">{{ wizard.aiDescText || 'Generating…' }}</div>
+            <div v-if="wizard.aiDescLoading" class="ai-streaming-text streaming" style="margin-top:0.35rem">{{ wizard.aiDescText || 'Generating description…' }}</div>
             <div v-else-if="wizard.aiDescText && !wizard.description" class="ai-inline-panel" style="margin-top:0.35rem">
               <div class="ai-streaming-text">{{ wizard.aiDescText }}</div>
               <div class="ai-actions">
