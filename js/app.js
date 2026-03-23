@@ -1030,15 +1030,10 @@ createApp({
       const normalize = (items) => items
         .map(item => typeof item === 'string' ? item : '')
         .map(item => mapper(item.trim()))
-        .filter(Boolean);
+        .filter(item => item && !item.startsWith('[') && !item.startsWith('{') && !item.startsWith(']') && !item.startsWith('}'));
 
       // Try to parse as JSON first
       const parsed = AI.parseJsonFromText(raw);
-      
-      // Debug: log if parsing fails on what looks like JSON
-      if (!parsed && (raw.startsWith('[') || raw.startsWith('{'))) {
-        console.warn('extractSuggestionList: JSON parsing failed for:', raw.slice(0, 100));
-      }
       
       if (Array.isArray(parsed)) {
         return [...new Set(normalize(parsed))];
@@ -1069,8 +1064,9 @@ createApp({
         return []; // Return empty instead of wrapping unparseable JSON
       }
 
-      // Single item (plain text)
-      return [...new Set(normalize([cleaned]))];
+      // Single item (plain text) - but filter out anything that looks like JSON syntax
+      const singleItem = normalize([cleaned]);
+      return singleItem.filter(item => item.length < 500 && !item.includes('["') && !item.includes('"]'));
     }
 
     function extractSingleSuggestion(raw) {

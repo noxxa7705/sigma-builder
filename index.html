@@ -1,1028 +1,1029 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#080808">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>Sigma Rule Builder — NOXXA</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css">
-</head>
-<body>
-
-<nav id="nav">
-  <div class="nav-inner">
-    <a href="https://noxxa7705.github.io" class="nav-logo">NOXXA</a>
-    <div class="nav-center">
-      <span class="nav-tool-label">sigma rule builder</span>
-    </div>
-    <ul class="nav-links">
-      <li><a href="https://github.com/noxxa7705/sigma-builder" target="_blank">github →</a></li>
-    </ul>
-  </div>
-</nav>
-
-<div id="app" @keydown.escape.window="hideCtxMenu">
-
-  <!-- Toast -->
-  <div class="toast" :class="{ visible: notification }">{{ notification }}</div>
-
-  <!-- Toolbar -->
-  <div class="toolbar">
-    <div class="toolbar-inner">
-      <div class="toolbar-left">
-        <span class="mono label-xs">SIGMA RULE BUILDER</span>
-        <div class="lint-badge" :class="lint.valid ? 'ok' : 'err'">
-          <span v-if="lint.valid">✓ valid</span>
-          <span v-else>{{ lint.errors.length }} error{{ lint.errors.length !== 1 ? 's' : '' }}</span>
-        </div>
-      </div>
-      <!-- Tabs in toolbar center -->
-      <div class="toolbar-tabs">
-        <button v-for="t in ['metadata','logsource','detection','tags','preview']" :key="t"
-                class="tab-btn" :class="{ active: activeTab === t }" @click="activeTab = t">
-          <span class="tab-dot" :class="{
-            'dot-ok':   tabStatus(t) === 'ok',
-            'dot-warn': tabStatus(t) === 'warn',
-            'dot-err':  tabStatus(t) === 'err'
-          }"></span>
-          {{ t }}
-        </button>
-      </div>
-      <div class="toolbar-right">
-        <button class="btn-tool" @click="showBrowser = true">⊞ community</button>
-        <button class="btn-tool" @click="showTemplates = true">⊙ templates</button>
-        <button class="btn-tool" @click="showLibrary = true">⊕ library</button>
-        <button class="btn-tool" data-keep @click="libSave" title="Save current rule to local library">⊙ save</button>
-        <button class="btn-tool" @click="showImport = true">↑ import</button>
-        <button class="btn-tool" @click="copyShareLink" title="Copy shareable link to this rule">⎋ share</button>
-        <button class="btn-tool" data-keep @click="openWizard">+ new</button>
-        <button class="btn-tool" data-keep @click="showSettings = true">⚙</button>
-        <button class="btn-tool accent" @click="exportRule">↓ export .yml</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Main layout -->
-  <div class="builder-layout" :class="{ 'matrix-mode': activeTab === 'tags' }">
-
-    <!-- LEFT: form panel -->
-    <div class="form-panel">
-
-      <!-- ══ METADATA ══════════════════════════════════════════════════════ -->
-      <div v-show="activeTab === 'metadata'" class="tab-content">
-
-        <div class="field-group">
-          <label>Title <span class="req">*</span> <button class="btn-ai-spark" @click="aiGenerate('title')" :class="{loading: aiState.title.loading}" :title="aiAvailable ? 'AI: suggest titles' : 'Configure AI endpoint in Settings'">✨</button></label>
-          <input v-model="rule.title" class="inp" placeholder="e.g. Suspicious PowerShell Encoded Command" />
-        </div>
-
-        <div class="ai-inline-panel ai-chips-panel" v-if="aiState.title.visible || aiState.title.loading">
-          <div class="ai-panel-header">
-            <span class="mono label-xs">{{ aiPanelHeading('title') }}</span>
-            <button class="btn-icon" @click="aiDismiss('title')">×</button>
-          </div>
-          <div v-if="aiState.title.loading" class="ai-streaming-text streaming">{{ aiState.title.text || aiLoadingLabel('title') }}</div>
-          <div v-else-if="aiState.title.error" class="ai-error">{{ aiState.title.error }}</div>
-          <div v-else class="ai-fp-list">
-            <div v-for="(t, i) in aiState.title.suggestions" :key="i" class="ai-fp-item">
-              <span>{{ t }}</span>
-              <button class="btn-tool small accent" @click="acceptTitle(t); aiDismiss('title')">Use</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="field-row">
-          <div class="field-group">
-            <label>Rule ID</label>
-            <div class="inp-row">
-              <input v-model="rule.id" class="inp mono-inp" readonly />
-              <button class="btn-icon" @click="regenId" title="New UUID">⟳</button>
-            </div>
-          </div>
-          <div class="field-group">
-            <label>Status</label>
-            <select v-model="rule.status" class="inp">
-              <option v-for="s in data.statusOptions" :key="s" :value="s">{{ s }}</option>
-            </select>
-          </div>
-          <div class="field-group">
-            <label>Level <span class="req">*</span></label>
-            <select v-model="rule.level" class="inp" :class="`level-${rule.level}`">
-              <option v-for="l in data.levelOptions" :key="l" :value="l">{{ l }}</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="field-group">
-          <label>Description <button class="btn-ai-spark" @click="aiGenerate('describe')" :class="{loading: aiState.describe.loading}" :title="aiAvailable ? 'AI: suggest descriptions' : 'Configure AI endpoint in Settings'">✨</button></label>
-          <textarea v-model="rule.description" class="inp" rows="3"
-                    placeholder="What does this rule detect and why is it suspicious?"></textarea>
-        </div>
-
-        <div class="ai-inline-panel ai-chips-panel" v-if="aiState.describe.visible || aiState.describe.loading">
-          <div class="ai-panel-header">
-            <span class="mono label-xs">{{ aiPanelHeading('describe') }}</span>
-            <button class="btn-icon" @click="aiDismiss('describe')">×</button>
-          </div>
-          <div v-if="aiState.describe.loading" class="ai-streaming-text streaming">{{ aiState.describe.text || aiLoadingLabel('describe') }}</div>
-          <div v-else-if="aiState.describe.error" class="ai-error">{{ aiState.describe.error }}</div>
-          <div v-else class="ai-fp-list">
-            <div v-for="(d, i) in aiState.describe.suggestions" :key="i" class="ai-fp-item ai-desc-item">
-              <span>{{ d }}</span>
-              <button class="btn-tool small accent" @click="acceptDescription(d); aiDismiss('describe')">Use</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="field-row">
-          <div class="field-group">
-            <label>Author</label>
-            <input v-model="rule.author" class="inp" placeholder="your name / handle" />
-          </div>
-          <div class="field-group">
-            <label>Date</label>
-            <input v-model="rule.date" type="date" class="inp" />
-          </div>
-          <div class="field-group">
-            <label>Modified</label>
-            <input v-model="rule.modified" type="date" class="inp" />
-          </div>
-        </div>
-
-        <div class="field-group">
-          <label>References</label>
-          <div v-for="(r, i) in rule.references" :key="i" class="list-row">
-            <input v-model="rule.references[i]" class="inp" placeholder="https://..." />
-            <button class="btn-icon danger" @click="removeListItem(rule.references, i)">×</button>
-          </div>
-          <button class="btn-add" @click="addListItem(rule.references)">+ add reference</button>
-        </div>
-
-        <div class="field-group">
-          <label>False Positives <button class="btn-ai-spark" @click="aiGenerate('falsepositives')" :class="{loading: aiState.falsepositives.loading}" :title="aiAvailable ? 'AI: brainstorm false positives' : 'Configure AI endpoint in Settings'">✨</button></label>
-          <div v-for="(fp, i) in rule.falsepositives" :key="i" class="list-row">
-            <input v-model="rule.falsepositives[i]" class="inp" placeholder="Legitimate admin activity..." />
-            <button class="btn-icon danger" @click="removeListItem(rule.falsepositives, i)">×</button>
-          </div>
-          <button class="btn-add" @click="addListItem(rule.falsepositives)">+ add false positive</button>
-        </div>
-
-        <div class="ai-inline-panel" v-if="aiState.falsepositives.visible || aiState.falsepositives.loading">
-          <div class="ai-panel-header">
-            <span class="mono label-xs">{{ aiPanelHeading('falsepositives') }}</span>
-            <button class="btn-icon" @click="aiDismiss('falsepositives')">×</button>
-          </div>
-          <div v-if="aiState.falsepositives.loading" class="ai-streaming-text streaming">{{ aiState.falsepositives.text || aiLoadingLabel('falsepositives') }}</div>
-          <div v-else-if="aiState.falsepositives.error" class="ai-error">{{ aiState.falsepositives.error }}</div>
-          <div v-else class="ai-fp-list">
-            <div v-for="(fp, i) in aiState.falsepositives.suggestions" :key="i" class="ai-fp-item">
-              <span>{{ fp }}</span>
-              <button class="btn-tool small" @click="acceptFP(fp)">Add</button>
-            </div>
-          </div>
-          <div class="ai-actions" v-if="!aiState.falsepositives.loading && aiState.falsepositives.suggestions.length">
-            <button class="btn-tool small accent" @click="acceptAllFPs">Accept all</button>
-            <button class="btn-tool small" @click="aiDismiss('falsepositives')">Dismiss</button>
-          </div>
-        </div>
-
-        <div class="field-group">
-          <label>Output Fields <span class="hint">(optional)</span></label>
-          <div v-for="(f, i) in rule.fields" :key="i" class="list-row">
-            <input v-model="rule.fields[i]" class="inp mono-inp"
-                   :placeholder="fieldSuggestions[0] || 'FieldName'" />
-            <button class="btn-icon danger" @click="removeListItem(rule.fields, i)">×</button>
-          </div>
-          <button class="btn-add" @click="addListItem(rule.fields)">+ add field</button>
-        </div>
-
-      </div>
-
-      <!-- ══ LOGSOURCE ════════════════════════════════════════════════════ -->
-      <div v-show="activeTab === 'logsource'" class="tab-content">
-
-        <div class="field-group">
-          <label>Quick Preset</label>
-          <select v-model="selectedPreset" class="inp">
-            <option value="">— select a preset —</option>
-            <optgroup v-for="(group, gname) in logsourceGroups" :key="gname" :label="gname">
-              <option v-for="ls in group" :key="ls.id" :value="ls.id">{{ ls.label }}</option>
-            </optgroup>
-          </select>
-          <p class="hint-text">Presets fill the fields below and suggest detection field names.</p>
-        </div>
-
-        <div class="separator"></div>
-
-        <div class="field-row">
-          <div class="field-group">
-            <label>Category</label>
-            <input v-model="rule.logsource.category" class="inp mono-inp" placeholder="process_creation" />
-          </div>
-          <div class="field-group">
-            <label>Product</label>
-            <input v-model="rule.logsource.product" class="inp mono-inp" placeholder="windows" />
-          </div>
-          <div class="field-group">
-            <label>Service</label>
-            <input v-model="rule.logsource.service" class="inp mono-inp" placeholder="sysmon" />
-          </div>
-        </div>
-
-        <div v-if="fieldSuggestions.length" class="field-suggestions">
-          <p class="label-xs mono">Available fields for this logsource:</p>
-          <div class="field-chips">
-            <span v-for="f in fieldSuggestions" :key="f" class="chip mono">{{ f }}</span>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- ══ DETECTION ════════════════════════════════════════════════════ -->
-      <div v-show="activeTab === 'detection'" class="tab-content">
-
-        <div v-for="group in rule.detection.groups" :key="group.id" class="detection-group">
-          <div class="group-header">
-            <input v-model="group.name" class="inp group-name-inp mono-inp" placeholder="selection" />
-            <div class="group-type-toggle">
-              <button class="btn-type" :class="{ active: group.type === 'fields' }"
-                      @click="group.type = 'fields'">fields</button>
-              <button class="btn-type" :class="{ active: group.type === 'keywords' }"
-                      @click="group.type = 'keywords'">keywords</button>
-            </div>
-            <button class="btn-icon danger" @click="removeGroup(group.id)"
-                    :disabled="rule.detection.groups.length <= 1">×</button>
-          </div>
-
-          <!-- Field mode -->
-          <div v-if="group.type === 'fields'" class="group-fields">
-            <div v-for="field in group.fields" :key="field.id" class="field-entry">
-              <div class="field-entry-top">
-                <div class="field-name-wrap">
-                  <input v-model="field.field" class="inp mono-inp field-name-inp"
-                         placeholder="FieldName" list="field-suggestions-list" />
-                  <datalist id="field-suggestions-list">
-                    <option v-for="f in fieldSuggestions" :key="f" :value="f" />
-                  </datalist>
-                </div>
-                <select v-model="field.modifier" class="inp modifier-sel">
-                  <option v-for="m in data.modifiers" :key="m.value" :value="m.value">{{ m.label }}</option>
-                </select>
-                <button class="btn-icon danger" @click="removeField(group, field.id)"
-                        :disabled="group.fields.length <= 1">×</button>
-              </div>
-              <div class="field-values">
-                <div v-for="(val, vi) in field.values" :key="vi" class="list-row value-row">
-                  <input v-model="field.values[vi]" class="inp mono-inp" placeholder="value" />
-                  <button class="btn-icon danger" @click="removeValue(field, vi)"
-                          :disabled="field.values.length <= 1">×</button>
-                </div>
-                <button class="btn-add small" @click="addValue(field)">+ value</button>
-              </div>
-            </div>
-            <button class="btn-add" @click="addField(group)">+ add field</button>
-          </div>
-
-          <!-- Keyword mode -->
-          <div v-if="group.type === 'keywords'" class="group-keywords">
-            <p class="hint-text">Keywords match against full log event text (no field binding).</p>
-            <div v-for="(kw, ki) in group.keywords" :key="ki" class="list-row">
-              <input v-model="group.keywords[ki]" class="inp mono-inp" placeholder="keyword" />
-              <button class="btn-icon danger" @click="removeKeyword(group, ki)"
-                      :disabled="group.keywords.length <= 1">×</button>
-            </div>
-            <button class="btn-add" @click="addKeyword(group)">+ add keyword</button>
-          </div>
-        </div>
-
-        <div class="detection-ai-bar">
-          <button class="btn-add group-add" @click="addGroup">+ add selection group</button>
-          <button class="btn-tool btn-ai small" @click="aiGenerate('detection')" :class="{loading: aiState.detection.loading}" :title="aiAvailable ? 'AI: suggest detection fields' : 'Configure AI endpoint in Settings'">✨ suggest detection</button>
-        </div>
-
-        <!-- AI Detection suggestions panel -->
-        <div class="ai-inline-panel ai-detection-panel" v-if="aiState.detection.visible || aiState.detection.loading">
-          <div class="ai-panel-header">
-            <span class="mono label-xs">{{ aiPanelHeading('detection') }}</span>
-            <button class="btn-icon" @click="aiDismiss('detection')">×</button>
-          </div>
-          <div v-if="aiState.detection.loading" class="ai-streaming-text streaming">{{ aiState.detection.text || aiLoadingLabel('detection') }}</div>
-          <div v-else-if="aiState.detection.error" class="ai-error">{{ aiState.detection.error }}</div>
-          <template v-else-if="aiState.detection.suggestions.length">
-            <p class="ai-detection-summary" v-if="aiState.detection.summary">{{ aiState.detection.summary }}</p>
-
-            <!-- Suggested groups -->
-            <div v-if="aiState.detection.suggestions[0]?.groups?.length" class="ai-det-section">
-              <span class="mono label-xs ai-det-section-label">SELECTION GROUPS</span>
-              <div v-for="(g, gi) in aiState.detection.suggestions[0].groups" :key="gi" class="ai-det-group">
-                <div class="ai-det-group-header">
-                  <code class="ai-det-name">{{ g.name }}</code>
-                  <span class="ai-det-rationale">{{ g.rationale }}</span>
-                  <button class="btn-tool small accent" @click="acceptDetectionGroup(g, false)">+ add group</button>
-                </div>
-                <div class="ai-det-fields">
-                  <div v-for="(f, fi) in g.fields" :key="fi" class="ai-det-field">
-                    <code>{{ f.field }}<span v-if="f.modifier">|{{ f.modifier }}</span></code>
-                    <span class="ai-det-values">{{ Array.isArray(f.values) ? f.values.join(', ') : f.values }}</span>
-                    <span class="ai-det-note" v-if="f.note">— {{ f.note }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Suggested filters -->
-            <div v-if="aiState.detection.suggestions[0]?.filters?.length" class="ai-det-section">
-              <span class="mono label-xs ai-det-section-label">FILTER GROUPS</span>
-              <div v-for="(f, fi) in aiState.detection.suggestions[0].filters" :key="fi" class="ai-det-group">
-                <div class="ai-det-group-header">
-                  <code class="ai-det-name">{{ f.name }}</code>
-                  <span class="ai-det-rationale">{{ f.rationale }}</span>
-                  <button class="btn-tool small" @click="acceptDetectionGroup(f, true)">+ add filter</button>
-                </div>
-                <div class="ai-det-fields">
-                  <div v-for="(field, ffi) in f.fields" :key="ffi" class="ai-det-field">
-                    <code>{{ field.field }}<span v-if="field.modifier">|{{ field.modifier }}</span></code>
-                    <span class="ai-det-values">{{ Array.isArray(field.values) ? field.values.join(', ') : field.values }}</span>
-                    <span class="ai-det-note" v-if="field.note">— {{ field.note }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Condition suggestion -->
-            <div v-if="aiState.detection.suggestions[0]?.condition_suggestion" class="ai-det-condition">
-              <span class="mono label-xs">SUGGESTED CONDITION</span>
-              <code>{{ aiState.detection.suggestions[0].condition_suggestion }}</code>
-              <button class="btn-tool small" @click="acceptDetectionCondition(aiState.detection.suggestions[0].condition_suggestion)">Use</button>
-            </div>
-
-            <!-- Legend -->
-            <div class="annot-legend" style="margin-top:0.5rem">
-              <span class="legend-label mono label-xs">LEGEND</span>
-              <span class="legend-item" style="color:#4ade80">■ selection group</span>
-              <span class="legend-item" style="color:#facc15">■ filter group</span>
-              <span class="legend-item" style="color:#60a5fa">■ condition</span>
-            </div>
-
-            <div class="ai-actions">
-              <button class="btn-tool small accent" @click="acceptAllDetection">Accept all</button>
-              <button class="btn-tool small" @click="aiDismiss('detection')">Dismiss</button>
-            </div>
-          </template>
-        </div>
-
-        <div class="separator"></div>
-
-        <div class="field-group">
-          <label>Condition <span class="req">*</span></label>
-          <div class="condition-templates">
-            <button v-for="ct in data.conditionTemplates" :key="ct.value"
-                    class="btn-cond-tpl"
-                    :class="{ active: rule.detection.condition === ct.value }"
-                    @click="setConditionTemplate(ct.value)">
-              {{ ct.label }}
-            </button>
-          </div>
-          <input v-model="rule.detection.condition" class="inp mono-inp" placeholder="selection" />
-        </div>
-
-        <div class="field-group">
-          <label>Timeframe <span class="hint">(optional)</span></label>
-          <input v-model="rule.detection.timeframe" class="inp mono-inp"
-                 placeholder="e.g. 15m, 1h, 30s" />
-        </div>
-
-      </div>
-
-      <!-- ══ TAGS ══════════════════════════════════════════════════════════ -->
-      <div v-show="activeTab === 'tags'" class="tab-content tags-tab">
-
-        <!-- Custom tags list (keep as-is) -->
-        <div class="field-group">
-          <label>Rule Tags</label>
-          <div v-for="(tag, i) in rule.tags" :key="i" class="list-row">
-            <input v-model="rule.tags[i]" class="inp mono-inp" placeholder="attack.t1059.001" />
-            <button class="btn-icon danger" @click="removeTag(i)">×</button>
-          </div>
-          <button class="btn-add" @click="addCustomTag">+ add tag</button>
-        </div>
-
-        <div class="separator"></div>
-
-        <div class="ai-tag-suggest" v-if="aiState.tags.visible || aiState.tags.loading">
-          <div class="ai-panel-header">
-            <span class="mono label-xs">{{ aiPanelHeading('tags') }}</span>
-            <button class="btn-icon" @click="aiDismiss('tags')">×</button>
-          </div>
-          <div v-if="aiState.tags.loading" class="ai-streaming-text">{{ aiState.tags.text || aiLoadingLabel('tags') }}</div>
-          <div v-else-if="aiState.tags.error" class="ai-error">{{ aiState.tags.error }}</div>
-          <div v-else class="ai-tag-chips">
-            <button v-for="t in aiState.tags.suggestions" :key="t"
-                    class="ai-tag-chip" :class="{ accepted: hasAiTag(t) }"
-                    @click="acceptAiTag(t)">
-              {{ t }} {{ hasAiTag(t) ? '✓' : '+' }}
-            </button>
-          </div>
-          <div class="ai-actions" v-if="!aiState.tags.loading && aiState.tags.suggestions.length">
-            <button class="btn-tool small accent" @click="acceptAllAiTags">Accept all</button>
-            <button class="btn-tool small" @click="aiDismiss('tags')">Dismiss</button>
-          </div>
-        </div>
-
-        <!-- Matrix header -->
-        <div class="matrix-header">
-          <span class="label-xs mono">MITRE ATT&amp;CK ENTERPRISE — v14.1</span>
-          <div class="matrix-controls">
-            <input v-model="matrixSearch" class="inp matrix-search-inp" placeholder="Search techniques…" />
-            <button class="btn-tool small" @click="matrixShowSubs = !matrixShowSubs">
-              {{ matrixShowSubs ? '▾ hide subs' : '▸ show subs' }}
-            </button>
-            <button class="btn-tool small" @click="clearAllTags" v-if="selectedTechIds.size > 0">
-              clear ({{ selectedTechIds.size }})
-            </button>
-            <button class="btn-tool small btn-ai" @click="aiGenerate('tags')" :class="{loading: aiState.tags.loading}">✨ suggest tags</button>
-          </div>
-        </div>
-
-        <!-- The matrix itself -->
-        <div class="attack-matrix-wrap">
-          <div class="attack-matrix">
-            <!-- Tactic header row -->
-            <div class="matrix-tactic-header" v-for="tac in matrixTactics" :key="tac.id">
-              <span class="tactic-label">{{ tac.label }}</span>
-              <span class="tactic-count">{{ tac.visibleCount }}</span>
-            </div>
-            <!-- Technique columns -->
-            <div class="matrix-column" v-for="tac in matrixTactics" :key="'col-'+tac.id">
-              <template v-for="tech in tac.techniques" :key="tech.id">
-                <!-- Parent technique cell -->
-                <div class="matrix-cell"
-                     :class="{
-                       selected: isSelected(tech.id),
-                       'has-subs': tech.subs.length > 0,
-                       'sub-expanded': expandedTechs.has(tech.id),
-                       'search-match': matrixSearch && techMatchesSearch(tech),
-                       'search-miss':  matrixSearch && !techMatchesSearch(tech) && !anySubMatches(tech),
-                     }"
-                     @click.stop="toggleTechCell(tech)"
-                     @contextmenu="ctxMatrixCell($event, tech, false)">
-                  <span class="cell-id">{{ tech.id }}</span>
-                  <span class="cell-name">{{ tech.name }}</span>
-                  <span v-if="tech.subs.length" class="cell-sub-toggle"
-                        @click.stop="toggleExpand(tech.id)">
-                    {{ expandedTechs.has(tech.id) ? '▾' : '▸' }} {{ tech.subs.length }}
-                  </span>
-                </div>
-                <!-- Sub-technique cells (shown when expanded or show-subs mode) -->
-                <template v-if="matrixShowSubs || expandedTechs.has(tech.id)">
-                  <div v-for="sub in tech.subs" :key="sub.id"
-                       class="matrix-cell matrix-sub-cell"
-                       :class="{
-                         selected: isSelected(sub.id),
-                         'search-match': matrixSearch && subMatchesSearch(sub),
-                         'search-miss':  matrixSearch && !subMatchesSearch(sub),
-                       }"
-                       @click="toggleSubCell(sub, tech)"
-                       @contextmenu="ctxMatrixCell($event, sub, true)">
-                    <span class="cell-id">{{ sub.id }}</span>
-                    <span class="cell-name">{{ sub.name }}</span>
-                  </div>
-                </template>
-              </template>
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- ══ PREVIEW ═══════════════════════════════════════════════════════ -->
-      <div v-show="activeTab === 'preview'" class="tab-content preview-tab">
-
-        <div v-if="lint.errors.length || lint.warnings.length" class="lint-box">
-          <div v-for="e in lint.errors"   :key="e" class="lint-item lint-error">✕ {{ e }}</div>
-          <div v-for="w in lint.warnings" :key="w" class="lint-item lint-warning">⚠ {{ w }}</div>
-        </div>
-        <div v-else class="lint-box lint-clean">✓ Rule looks good</div>
-
-        <div class="preview-actions">
-          <button class="btn-tool" @click="copyYaml">{{ copied ? '✓ copied!' : '⎘ copy' }}</button>
-          <button class="btn-tool accent" @click="exportRule">↓ export .yml</button>
-          <button class="btn-tool btn-ai" @click="aiGenerate('explain')" :class="{loading: aiState.explain.loading}">✨ explain</button>
-          <button class="btn-tool btn-ai" @click="aiGenerate('review')" :class="{loading: aiState.review.loading}">✨ review</button>
-        </div>
-
-        <!-- AI Explain panel -->
-        <div class="ai-inline-panel ai-explain-panel" v-if="aiState.explain.visible || aiState.explain.loading">
-          <div class="ai-panel-header">
-            <span class="mono label-xs">{{ aiPanelHeading('explain') }}</span>
-            <button class="btn-icon" @click="aiDismiss('explain')">×</button>
-          </div>
-          <div class="ai-markdown-text" :class="{ streaming: aiState.explain.loading }" v-html="renderMarkdown(aiState.explain.text || (aiState.explain.loading ? aiLoadingLabel('explain') : ''))"></div>
-          <div v-if="aiState.explain.error" class="ai-error">{{ aiState.explain.error }}</div>
-        </div>
-
-        <!-- AI Review panel with annotated YAML -->
-        <div class="ai-inline-panel ai-review-panel" v-if="aiState.review.visible || aiState.review.loading">
-          <div class="ai-panel-header">
-            <span class="mono label-xs">{{ aiPanelHeading('review') }}</span>
-            <span v-if="aiState.review.score" class="review-score" :class="scoreClass(aiState.review.score)">{{ aiState.review.score }}/10</span>
-            <button class="btn-icon" @click="aiDismiss('review')">×</button>
-          </div>
-          <div v-if="aiState.review.loading" class="ai-streaming-text streaming">{{ aiState.review.rawText || aiLoadingLabel('review') }}</div>
-          <div v-else-if="aiState.review.error" class="ai-error">{{ aiState.review.error }}</div>
-          <template v-else>
-            <p class="review-summary" v-if="aiState.review.summary">{{ aiState.review.summary }}</p>
-            <!-- Annotated YAML -->
-            <pre class="yaml-annotated"><span
-              v-for="(seg, i) in annotatedYamlSegments" :key="i"
-              class="yaml-seg"
-              :class="seg.severity ? `annot-${seg.severity}` : ''"
-              :title="seg.note || ''"
-            >{{ seg.text }}</span></pre>
-            <!-- Legend -->
-            <div class="annot-legend" v-if="aiState.review.annotations.length">
-              <span class="legend-label mono label-xs">LEGEND</span>
-              <span class="legend-item annot-error">■ error</span>
-              <span class="legend-item annot-warning">■ warning</span>
-              <span class="legend-item annot-info">■ info</span>
-              <span class="legend-item annot-good">■ good</span>
-            </div>
-            <!-- Annotation list -->
-            <div class="annot-list">
-              <div v-for="(a, i) in aiState.review.annotations" :key="i" class="annot-item" :class="`annot-item-${a.severity}`">
-                <span class="annot-badge" :class="`annot-${a.severity}`">{{ a.severity }}</span>
-                <code class="annot-target">{{ a.target }}</code>
-                <span class="annot-note">{{ a.note }}</span>
-              </div>
-            </div>
-          </template>
-        </div>
-
-        <pre class="yaml-preview" @contextmenu="ctxYamlPreview($event)">{{ yamlOutput }}</pre>
-
-        <!-- ── Converter ─────────────────────────────────────────── -->
-        <div class="converter-panel">
-          <div class="converter-header">
-            <span class="mono label-xs">QUERY CONVERTER</span>
-            <span class="hint-text" style="font-size:0.7rem">Best-effort — always review before use</span>
-          </div>
-          <!-- Target selector -->
-          <div class="converter-tabs">
-            <button v-for="t in ['spl','kql','eql']" :key="t"
-                    class="btn-conv-tab" :class="{ active: converterTarget === t }"
-                    @click="converterTarget = t">{{ t.toUpperCase() }}</button>
-          </div>
-          <!-- Output -->
-          <div class="converter-output-wrap">
-            <pre class="converter-output">{{ converterOutput }}</pre>
-            <button class="btn-copy-conv" @click="copyConverterOutput" title="Copy to clipboard">copy</button>
-          </div>
-          <!-- Note if present -->
-          <p v-if="converterNote" class="converter-note">⚠ {{ converterNote }}</p>
-        </div>
-
-      </div>
-    </div>
-
-    <!-- RIGHT: live preview -->
-    <div class="preview-panel">
-      <div class="preview-panel-header">
-        <span class="mono label-xs">LIVE PREVIEW</span>
-        <div class="preview-panel-actions">
-          <button class="btn-tool small" @click="copyYaml">{{ copied ? '✓' : '⎘ copy' }}</button>
-          <button class="btn-tool small accent" @click="exportRule">↓ export</button>
-        </div>
-      </div>
-      <div v-if="lint.errors.length" class="lint-inline">
-        <span v-for="e in lint.errors" :key="e" class="lint-err-inline">✕ {{ e }}</span>
-      </div>
-      <pre class="yaml-live" @contextmenu="ctxYamlPreview($event)">{{ yamlOutput }}</pre>
-    </div>
-
-  </div><!-- /.builder-layout -->
-
-  <!-- ══ MODAL: COMMUNITY BROWSER ══════════════════════════════════════════ -->
-  <div class="modal-overlay" v-if="showBrowser" @click.self="showBrowser = false">
-    <div class="modal modal-browser">
-      <div class="modal-header">
-        <div class="modal-title-row">
-          <span class="modal-title">SigmaHQ Community Rules</span>
-          <a href="https://github.com/SigmaHQ/sigma" target="_blank" class="modal-link">
-            github.com/SigmaHQ/sigma →
-          </a>
-        </div>
-        <button class="btn-icon" @click="showBrowser = false">×</button>
-      </div>
-
-      <div class="browser-layout">
-        <!-- Left sidebar: categories -->
-        <div class="browser-sidebar">
-          <div v-for="(cats, grp) in communityGroups" :key="grp" class="browser-group">
-            <div class="browser-group-label mono label-xs">{{ grp }}</div>
-            <button v-for="cat in cats" :key="cat.id"
-                    class="browser-cat-btn"
-                    :class="{ active: activeCatId === cat.id }"
-                    @click="selectCategory(cat)">
-              {{ cat.label.split(' — ')[1] || cat.label }}
-            </button>
-          </div>
-        </div>
-
-        <!-- Right: file list -->
-        <div class="browser-files">
-          <div v-if="!activeCatId" class="browser-empty">
-            <p>← Select a category to browse community rules</p>
-            <p class="hint-text">Loads rule list from github.com/SigmaHQ/sigma on demand.</p>
-            <p class="hint-text">Add a GitHub token in <button class="btn-inline-link" @click="showBrowser=false; showSettings=true">Settings ⚙</button> to avoid rate limits.</p>
-          </div>
-
-          <template v-else>
-            <div class="browser-files-header">
-              <input v-model="browserSearch" class="inp browser-search"
-                     placeholder="Filter rules…" />
-              <span class="mono label-xs" v-if="catFiles.length">
-                {{ filteredFiles.length }} / {{ catFiles.length }} rules
-              </span>
-            </div>
-
-            <div v-if="catLoading" class="browser-status">loading rules…</div>
-            <div v-else-if="catError" class="browser-status err">{{ catError }}</div>
-            <div v-else-if="ruleError" class="browser-status err">{{ ruleError }}</div>
-
-            <div class="browser-file-list">
-              <button v-for="file in filteredFiles" :key="file.path"
-                      class="browser-file-btn"
-                      :disabled="ruleLoading"
-                      @click="loadCommunityRule(file)"
-                      @contextmenu.stop="ctxBrowserFile($event, file)">
-                <span class="browser-file-name">{{ file.name }}</span>
-                <span class="browser-file-arrow">→</span>
-              </button>
-              <div v-if="!catLoading && filteredFiles.length === 0 && catFiles.length > 0"
-                   class="browser-status">
-                No rules match "{{ browserSearch }}"
-              </div>
-            </div>
-          </template>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ══ MODAL: LOCAL TEMPLATES ════════════════════════════════════════════ -->
-  <div class="modal-overlay" v-if="showTemplates" @click.self="showTemplates = false">
-    <div class="modal">
-      <div class="modal-header">
-        <span class="modal-title">Pinned Templates</span>
-        <button class="btn-icon" @click="showTemplates = false">×</button>
-      </div>
-      <div class="modal-body">
-        <p class="hint-text">Quick-start templates served from this repo.</p>
-        <p v-if="templateError" class="error-text">{{ templateError }}</p>
-        <div class="tpl-list">
-          <button v-for="t in data.pinnedTemplates" :key="t.id"
-                  class="tpl-card" :disabled="templateLoading"
-                  @click="loadPinnedTemplate(t)">
-            <span class="tpl-name">{{ t.label }}</span>
-            <span class="tpl-arrow">→</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ══ MODAL: IMPORT ════════════════════════════════════════════════════ -->
-  <div class="modal-overlay" v-if="showImport" @click.self="showImport = false">
-    <div class="modal modal-import">
-      <div class="modal-header">
-        <span class="modal-title">Import Existing Rule</span>
-        <button class="btn-icon" @click="showImport = false">×</button>
-      </div>
-      <div class="modal-body">
-        <p class="hint-text">Paste a Sigma rule YAML to edit it.</p>
-        <p v-if="importError" class="error-text">{{ importError }}</p>
-        <textarea v-model="importText" class="inp yaml-import-area"
-                  placeholder="title: ...&#10;logsource:&#10;  ..."></textarea>
-        <div class="modal-footer">
-          <button class="btn-tool" @click="showImport = false">cancel</button>
-          <button class="btn-tool accent" @click="doImport">import →</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ══ MODAL: SETTINGS ══════════════════════════════════════════════════ -->
-  <div class="modal-overlay" v-if="showSettings" @click.self="showSettings = false">
-    <div class="modal modal-settings">
-      <div class="modal-header">
-        <span class="modal-title">Settings</span>
-        <button class="btn-icon" @click="showSettings = false">×</button>
-      </div>
-      <div class="modal-body">
-        <div class="field-group">
-          <label>GitHub Personal Access Token</label>
-          <input v-model="githubToken" type="password" class="inp mono-inp"
-                 placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" />
-          <p class="hint-text">
-            Optional. Raises GitHub API rate limit from 60 to 5,000 req/hr.
-            Only needs <strong>public_repo</strong> read scope (or no scope — public repos are readable unauthenticated).
-            Stored in <code>localStorage</code> only — never sent anywhere except api.github.com.
-          </p>
-          <a href="https://github.com/settings/tokens/new?description=sigma-builder&scopes=" 
-             target="_blank" class="hint-link">Generate a token →</a>
-        </div>
-        <!-- AI / LM section header -->
-        <div class="settings-section-head">
-          <span>AI (optional)</span>
-          <span class="hint">LM Studio · Ollama · OpenAI · any OpenAI-compatible</span>
-        </div>
-
-        <!-- Endpoint + live status badge -->
-        <div class="field-group">
-          <label>AI Endpoint URL <span class="hint">(OpenAI-compatible)</span></label>
-          <div class="endpoint-row">
-            <input v-model="aiEndpoint" class="inp mono-inp endpoint-inp"
-                   placeholder="http://localhost:1234/v1"
-                   @input="onEndpointInput" />
-            <span class="ai-live-badge" :class="aiLiveBadgeClass">{{ aiLiveBadgeText }}</span>
-          </div>
-          <p class="hint-text">Works with LM Studio, Ollama, OpenAI, or any OpenAI-compatible server. Leave blank to disable AI.</p>
-        </div>
-
-        <!-- Model picker — dropdown after models are fetched, text input as fallback -->
-        <div class="field-group">
-          <label>Model <span class="hint">(pick one to use for AI suggestions)</span></label>
-          <div class="model-row">
-            <select v-if="aiAvailableModels.length" v-model="aiModel" class="inp" @change="onAiSettingChange">
-              <option value="">— pick a model —</option>
-              <option v-for="m in aiAvailableModels" :key="m" :value="m">{{ m }}</option>
-            </select>
-            <input v-else v-model="aiModel" class="inp mono-inp" placeholder="model-name" @input="onAiSettingChange" />
-            <button class="btn-tool small" @click="refreshModels" :disabled="aiLiveStatus === 'testing'" title="Re-fetch model list">↺</button>
-          </div>
-          <div v-if="aiModel" class="hint" style="margin-top:0.5rem">
-            <span v-if="aiModelRecommendation">{{ aiModelRecommendation }} · </span>
-            <strong>For JSON tasks:</strong> prefer non-thinking models or reduce max_tokens.
-          </div>
-        </div>
-
-        <!-- API Key -->
-        <div class="field-group">
-          <label>API Key <span class="hint">(optional — leave blank for local)</span></label>
-          <input v-model="aiApiKey" type="password" class="inp mono-inp" placeholder="sk-… or blank for LM Studio/Ollama" @input="onAiSettingChange" />
-        </div>
-
-        <!-- Advanced settings (collapsible) -->
-        <div class="field-group">
-          <button class="btn-inline-link adv-toggle" @click="aiShowAdvanced = !aiShowAdvanced">
-            {{ aiShowAdvanced ? '▾' : '▸' }} Advanced settings
-          </button>
-          <div v-if="aiShowAdvanced" class="adv-settings">
-            <div class="adv-row">
-              <label>Temperature <span class="hint">{{ aiAdvTemp }}</span></label>
-              <input type="range" v-model.number="aiAdvTemp" min="0" max="1" step="0.05" class="range-inp" @change="onAiSettingChange" />
-            </div>
-            <div class="adv-row">
-              <label>Max tokens</label>
-              <input type="number" v-model.number="aiAdvMaxTokens" min="256" max="8192" step="128" class="inp inp-sm" @change="onAiSettingChange" />
-            </div>
-          </div>
-        </div>
-
-        <div class="modal-footer">
-          <button class="btn-tool accent" @click="showSettings = false">Close</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ══ MODAL: NEW RULE WIZARD ══════════════════════════════════════════ -->
-  <div class="modal-overlay" v-if="wizard.open" @click.self="wizard.open = false">
-    <div class="modal modal-wizard">
-      <div class="modal-header">
-        <span class="modal-title">✦ New Rule Wizard</span>
-        <div class="wizard-steps">
-          <span v-for="i in 4" :key="i" class="wizard-step-dot"
-                :class="{ active: wizard.step === i, done: wizard.step > i }">
-            {{ wizard.step > i ? '●' : wizard.step === i ? '●' : '○' }}
-          </span>
-        </div>
-        <button class="btn-icon" @click="wizard.open = false">×</button>
-      </div>
-      <div class="modal-body wizard-body">
-
-        <!-- Step 1: Scenario -->
-        <div v-if="wizard.step === 1">
-          <p class="hint-text" style="margin-bottom:1rem">What kind of detection are you building?</p>
-          <div class="wizard-scenario-grid">
-            <button v-for="sc in wizardScenarios" :key="sc.id"
-                    class="wizard-scenario-card"
-                    :class="{ active: wizard.scenario === sc.id }"
-                    @click="wizard.scenario = sc.id">
-              <span class="wizard-sc-icon">{{ sc.icon }}</span>
-              <span class="wizard-sc-label">{{ sc.label }}</span>
-              <span class="wizard-sc-desc">{{ sc.desc }}</span>
-            </button>
-          </div>
-
-          <div v-if="aiAvailable" class="ai-inline-panel" style="margin-top:1rem">
-            <div class="ai-panel-header">
-              <span class="mono label-xs">✨ BRAINSTORM STARTER RULE</span>
-            </div>
-            <textarea v-model="wizard.brainstormPrompt" class="inp" rows="3"
-                      placeholder="Describe the detection idea, behavior, or hypothesis you want to turn into a Sigma draft."></textarea>
-            <div class="ai-actions">
-              <button class="btn-tool btn-ai small" :class="{ loading: wizard.brainstormLoading }" @click="wizardBrainstorm">
-                ✨ brainstorm draft
-              </button>
-            </div>
-            <div v-if="wizard.brainstormLoading" class="ai-streaming-text streaming">{{ wizard.brainstormText || 'Generating draft…' }}</div>
-            <div v-else-if="wizard.brainstormPlan" class="ai-fp-list">
-              <div class="ai-fp-item ai-desc-item">
-                <span>
-                  <strong>{{ wizard.brainstormPlan.title || 'Untitled draft' }}</strong><br>
-                  <span class="hint">{{ wizard.brainstormPlan.description }}</span>
-                </span>
-                <button class="btn-tool small accent" @click="applyWizardBrainstorm(wizard.brainstormPlan)">use</button>
-              </div>
-              <div class="hint" v-if="wizard.brainstormPlan.scenario || wizard.brainstormPlan.logsource_id">
-                Scenario: {{ wizard.brainstormPlan.scenario || 'custom' }}
-                <span v-if="wizard.brainstormPlan.logsource_id"> · Preset: {{ wizard.brainstormPlan.logsource_id }}</span>
-              </div>
-            </div>
-            <div v-else-if="wizard.brainstormText" class="ai-error">{{ wizard.brainstormText }}</div>
-          </div>
-        </div>
-
-        <!-- Step 2: Basics -->
-        <div v-if="wizard.step === 2">
-          <div class="field-group" style="margin-bottom:1rem">
-            <label>Title <span class="req">*</span></label>
-            <input v-model="wizard.title" class="inp" ref="wizardTitleRef"
-                   placeholder="e.g. Suspicious PowerShell Encoded Command" />
-          </div>
-          <div class="field-group" style="margin-bottom:1rem">
-            <label>Level</label>
-            <div class="wizard-level-pills">
-              <button v-for="lv in ['informational','low','medium','high','critical']" :key="lv"
-                      class="wizard-level-pill" :class="[`pill-${lv}`, { active: wizard.level === lv }]"
-                      @click="wizard.level = lv">{{ lv }}</button>
-            </div>
-          </div>
-          <div class="field-group" style="margin-bottom:1rem">
-            <label>Author</label>
-            <input v-model="wizard.author" class="inp" placeholder="your name / handle" />
-          </div>
-          <div class="field-group">
-            <label>
-              Description
-              <button v-if="aiAvailable" class="btn-ai-spark"
-                      :class="{ loading: wizard.aiDescLoading }"
-                      @click="wizardAiDescribe"
-                      title="Generate a draft description">✨</button>
-            </label>
-            <textarea v-model="wizard.description" class="inp" rows="3"
-                      placeholder="Optional — what does this rule detect?"></textarea>
-            <div v-if="wizard.aiDescLoading" class="ai-streaming-text streaming" style="margin-top:0.35rem">{{ wizard.aiDescText || 'Generating description…' }}</div>
-            <div v-else-if="wizard.aiDescText && !wizard.description" class="ai-inline-panel" style="margin-top:0.35rem">
-              <div class="ai-streaming-text">{{ wizard.aiDescText }}</div>
-              <div class="ai-actions">
-                <button class="btn-tool small accent" @click="wizard.description = wizard.aiDescText; wizard.aiDescText = ''">Accept</button>
-                <button class="btn-tool small" @click="wizard.aiDescText = ''">Dismiss</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Step 3: Logsource -->
-        <div v-if="wizard.step === 3">
-          <p class="hint-text" style="margin-bottom:0.75rem">Choose a logsource preset, or skip to configure manually.</p>
-          <div v-if="aiAvailable" style="margin-bottom:0.75rem">
-            <button class="btn-tool btn-ai" :class="{ loading: wizard.aiLsLoading }" @click="wizardAiLogsource">
-              ✨ suggest logsource
-            </button>
-            <span v-if="wizard.aiLsText" class="hint" style="margin-left:0.5rem">{{ wizard.aiLsText }}</span>
-          </div>
-          <div class="wizard-ls-grid">
-            <button v-for="ls in wizardFilteredLogsources" :key="ls.id"
-                    class="wizard-ls-card"
-                    :class="{ active: wizard.logsourceId === ls.id }"
-                    @click="wizard.logsourceId = ls.id">
-              <span class="wizard-ls-label">{{ ls.label }}</span>
-              <span class="wizard-ls-meta mono">
-                <span v-if="ls.category">cat: {{ ls.category }}</span>
-                <span v-if="ls.product">  product: {{ ls.product }}</span>
-                <span v-if="ls.service">  svc: {{ ls.service }}</span>
-              </span>
-            </button>
-            <button class="wizard-ls-card" :class="{ active: wizard.logsourceId === '' }" @click="wizard.logsourceId = ''">
-              <span class="wizard-ls-label">⊘ Skip / manual</span>
-              <span class="wizard-ls-meta">Configure logsource manually in editor</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Step 4: Review -->
-        <div v-if="wizard.step === 4">
-          <p class="hint-text" style="margin-bottom:0.75rem">Review the rule that will be created:</p>
-          <pre class="wizard-yaml-preview">{{ wizardPreviewYaml }}</pre>
-        </div>
-
-      </div>
-      <div class="modal-footer wizard-footer">
-        <button class="btn-tool" @click="wizard.open = false">cancel</button>
-        <div style="display:flex;gap:0.5rem">
-          <button class="btn-tool" v-if="wizard.step > 1" @click="wizard.step--">← back</button>
-          <button class="btn-tool" v-if="wizard.step < 4"
-                  :disabled="wizard.step === 1 && !wizard.scenario"
-                  @click="wizardNext">next →</button>
-          <button class="btn-tool accent" v-if="wizard.step === 4" @click="wizardStart">▶ start editing</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ══ MODAL: RULE LIBRARY ══════════════════════════════════════════════ -->
-  <div class="modal-overlay" v-if="showLibrary" @click.self="showLibrary = false">
-    <div class="modal modal-library">
-      <div class="modal-header">
-        <div class="modal-title-row">
-          <span class="modal-title">⊕ Rule Library</span>
-          <span class="modal-link">{{ libraryEntries.length }} saved</span>
-        </div>
-        <button class="btn-icon" @click="showLibrary = false">×</button>
-      </div>
-      <div class="modal-body" style="padding-top:0.75rem">
-        <!-- Search -->
-        <input v-model="librarySearch" class="inp" placeholder="Search rules…" style="margin-bottom:0.75rem" />
-        <!-- Empty state -->
-        <div v-if="!libraryEntries.length" class="lib-empty">
-          <p>No saved rules yet.</p>
-          <p class="hint-text">Click <strong>⊙ save</strong> in the toolbar to save the current rule.</p>
-        </div>
-        <!-- No search results -->
-        <div v-else-if="!libraryFiltered.length" class="lib-empty">
-          <p class="hint-text">No rules match your search.</p>
-        </div>
-        <!-- Rule list -->
-        <div v-else class="lib-list">
-          <div v-for="entry in libraryFiltered" :key="entry.id" class="lib-entry">
-            <div class="lib-entry-header" @click="libLoad(entry)">
-              <span class="lib-level-badge" :style="{ '--lc': levelColor(entry.level) }">{{ entry.level }}</span>
-              <span class="lib-title">{{ entry.title || 'Untitled' }}</span>
-            </div>
-            <div class="lib-entry-meta">
-              <span class="hint">{{ entry.logsource?.product || entry.logsource?.category || '—' }}</span>
-              <span class="hint">{{ entry.tags.slice(0,2).join(' · ') }}</span>
-              <span class="hint lib-date">{{ formatRelativeTime(entry.savedAt) }}</span>
-            </div>
-            <div class="lib-entry-actions">
-              <button class="btn-tool small" @click="libLoad(entry)">load</button>
-              <button class="btn-tool small" @click="libDuplicate(entry)">duplicate</button>
-              <button class="btn-tool small danger" @click="libDelete(entry.id)">delete</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ══ CONTEXT MENU ══ -->
-  <Teleport to="body">
-    <div v-if="ctxMenu.visible" class="ctx-overlay" @click="hideCtxMenu" @contextmenu.prevent="hideCtxMenu"></div>
-    <div v-if="ctxMenu.visible" class="ctx-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }">
-      <template v-for="(item, i) in ctxMenu.items" :key="i">
-        <div v-if="item.separator" class="ctx-separator"></div>
-        <button v-else class="ctx-item" :class="{ disabled: item.disabled }"
-                @click="!item.disabled && (item.action(), hideCtxMenu())">
-          {{ item.label }}
-        </button>
-      </template>
-    </div>
-  </Teleport>
-
-</div><!-- /#app -->
-
-<footer class="footer">
-  <div class="footer-inner">
-    <span class="mono">sigma rule builder · <a href="https://noxxa7705.github.io">NOXXA</a></span>
-    <span class="mono text-muted">static · no backend · community rules via <a href="https://github.com/SigmaHQ/sigma" target="_blank">SigmaHQ/sigma</a></span>
-  </div>
-</footer>
-
-<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
-<script src="js/ai-panel-mixin.js"></script>
-<script src="js/attack-matrix.js"></script>
-<script src="js/sigma-data.js"></script>
-<script src="js/ai.js"></script>
-<script src="js/converter.js"></script>
-<script src="js/app.js"></script>
-</body>
-</html>
+     1|<!DOCTYPE html>
+     2|<html lang="en">
+     3|<head>
+     4|  <meta charset="UTF-8">
+     5|  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+     6|  <meta name="theme-color" content="#080808">
+     7|  <meta name="mobile-web-app-capable" content="yes">
+     8|  <meta name="apple-mobile-web-app-capable" content="yes">
+     9|  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    10|  <title>Sigma Rule Builder — NOXXA</title>
+    11|  <link rel="preconnect" href="https://fonts.googleapis.com">
+    12|  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    13|  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    14|  <link rel="stylesheet" href="css/style.css">
+    15|</head>
+    16|<body>
+    17|
+    18|<nav id="nav">
+    19|  <div class="nav-inner">
+    20|    <a href="https://noxxa7705.github.io" class="nav-logo">NOXXA</a>
+    21|    <div class="nav-center">
+    22|      <span class="nav-tool-label">sigma rule builder</span>
+    23|    </div>
+    24|    <ul class="nav-links">
+    25|      <li><a href="https://github.com/noxxa7705/sigma-builder" target="_blank">github →</a></li>
+    26|    </ul>
+    27|  </div>
+    28|</nav>
+    29|
+    30|<div id="app" @keydown.escape.window="hideCtxMenu">
+    31|
+    32|  <!-- Toast -->
+    33|  <div class="toast" :class="{ visible: notification }">{{ notification }}</div>
+    34|
+    35|  <!-- Toolbar -->
+    36|  <div class="toolbar">
+    37|    <div class="toolbar-inner">
+    38|      <div class="toolbar-left">
+    39|        <span class="mono label-xs">SIGMA RULE BUILDER</span>
+    40|        <div class="lint-badge" :class="lint.valid ? 'ok' : 'err'">
+    41|          <span v-if="lint.valid">✓ valid</span>
+    42|          <span v-else>{{ lint.errors.length }} error{{ lint.errors.length !== 1 ? 's' : '' }}</span>
+    43|        </div>
+    44|      </div>
+    45|      <!-- Tabs in toolbar center -->
+    46|      <div class="toolbar-tabs">
+    47|        <button v-for="t in ['metadata','logsource','detection','tags','preview']" :key="t"
+    48|                class="tab-btn" :class="{ active: activeTab === t }" @click="activeTab = t">
+    49|          <span class="tab-dot" :class="{
+    50|            'dot-ok':   tabStatus(t) === 'ok',
+    51|            'dot-warn': tabStatus(t) === 'warn',
+    52|            'dot-err':  tabStatus(t) === 'err'
+    53|          }"></span>
+    54|          {{ t }}
+    55|        </button>
+    56|      </div>
+    57|      <div class="toolbar-right">
+    58|        <button class="btn-tool" @click="showBrowser = true">⊞ community</button>
+    59|        <button class="btn-tool" @click="showTemplates = true">⊙ templates</button>
+    60|        <button class="btn-tool" @click="showLibrary = true">⊕ library</button>
+    61|        <button class="btn-tool" data-keep @click="libSave" title="Save current rule to local library">⊙ save</button>
+    62|        <button class="btn-tool" @click="showImport = true">↑ import</button>
+    63|        <button class="btn-tool" @click="copyShareLink" title="Copy shareable link to this rule">⎋ share</button>
+    64|        <button class="btn-tool" data-keep @click="openWizard">+ new</button>
+    65|        <button class="btn-tool" data-keep @click="showSettings = true">⚙</button>
+    66|        <button class="btn-tool accent" @click="exportRule">↓ export .yml</button>
+    67|      </div>
+    68|    </div>
+    69|  </div>
+    70|
+    71|  <!-- Main layout -->
+    72|  <div class="builder-layout" :class="{ 'matrix-mode': activeTab === 'tags' }">
+    73|
+    74|    <!-- LEFT: form panel -->
+    75|    <div class="form-panel">
+    76|
+    77|      <!-- ══ METADATA ══════════════════════════════════════════════════════ -->
+    78|      <div v-show="activeTab === 'metadata'" class="tab-content">
+    79|
+    80|        <div class="field-group">
+    81|          <label>Title <span class="req">*</span> <button class="btn-ai-spark" @click="aiGenerate('title')" :class="{loading: aiState.title.loading}" :title="aiAvailable ? 'AI: suggest titles' : 'Configure AI endpoint in Settings'">✨</button></label>
+    82|          <input v-model="rule.title" class="inp" placeholder="e.g. Suspicious PowerShell Encoded Command" />
+    83|        </div>
+    84|
+    85|        <div class="ai-inline-panel ai-chips-panel" v-if="aiState.title.visible || aiState.title.loading">
+    86|          <div class="ai-panel-header">
+    87|            <span class="mono label-xs">{{ aiPanelHeading('title') }}</span>
+    88|            <button class="btn-icon" @click="aiDismiss('title')">×</button>
+    89|          </div>
+    90|          <div v-if="aiState.title.loading" class="ai-streaming-text streaming">{{ aiState.title.text || aiLoadingLabel('title') }}</div>
+    91|          <div v-else-if="aiState.title.error" class="ai-error">{{ aiState.title.error }}</div>
+    92|          <div v-else class="ai-fp-list">
+    93|            <div v-for="(t, i) in aiState.title.suggestions" :key="i" class="ai-fp-item">
+    94|              <span>{{ t }}</span>
+    95|              <button class="btn-tool small accent" @click="acceptTitle(t); aiDismiss('title')">Use</button>
+    96|            </div>
+    97|          </div>
+    98|        </div>
+    99|
+   100|        <div class="field-row">
+   101|          <div class="field-group">
+   102|            <label>Rule ID</label>
+   103|            <div class="inp-row">
+   104|              <input v-model="rule.id" class="inp mono-inp" readonly />
+   105|              <button class="btn-icon" @click="regenId" title="New UUID">⟳</button>
+   106|            </div>
+   107|          </div>
+   108|          <div class="field-group">
+   109|            <label>Status</label>
+   110|            <select v-model="rule.status" class="inp">
+   111|              <option v-for="s in data.statusOptions" :key="s" :value="s">{{ s }}</option>
+   112|            </select>
+   113|          </div>
+   114|          <div class="field-group">
+   115|            <label>Level <span class="req">*</span></label>
+   116|            <select v-model="rule.level" class="inp" :class="`level-${rule.level}`">
+   117|              <option v-for="l in data.levelOptions" :key="l" :value="l">{{ l }}</option>
+   118|            </select>
+   119|          </div>
+   120|        </div>
+   121|
+   122|        <div class="field-group">
+   123|          <label>Description <button class="btn-ai-spark" @click="aiGenerate('describe')" :class="{loading: aiState.describe.loading}" :title="aiAvailable ? 'AI: suggest descriptions' : 'Configure AI endpoint in Settings'">✨</button></label>
+   124|          <textarea v-model="rule.description" class="inp" rows="3"
+   125|                    placeholder="What does this rule detect and why is it suspicious?"></textarea>
+   126|        </div>
+   127|
+   128|        <div class="ai-inline-panel ai-chips-panel" v-if="aiState.describe.visible || aiState.describe.loading">
+   129|          <div class="ai-panel-header">
+   130|            <span class="mono label-xs">{{ aiPanelHeading('describe') }}</span>
+   131|            <button class="btn-icon" @click="aiDismiss('describe')">×</button>
+   132|          </div>
+   133|          <div v-if="aiState.describe.loading" class="ai-streaming-text streaming">{{ aiState.describe.text || aiLoadingLabel('describe') }}</div>
+   134|          <div v-else-if="aiState.describe.error" class="ai-error">{{ aiState.describe.error }}</div>
+   135|          <div v-else class="ai-fp-list">
+   136|            <div v-for="(d, i) in aiState.describe.suggestions" :key="i" class="ai-fp-item ai-desc-item">
+   137|              <span>{{ d }}</span>
+   138|              <button class="btn-tool small accent" @click="acceptDescription(d); aiDismiss('describe')">Use</button>
+   139|            </div>
+   140|          </div>
+   141|        </div>
+   142|
+   143|        <div class="field-row">
+   144|          <div class="field-group">
+   145|            <label>Author</label>
+   146|            <input v-model="rule.author" class="inp" placeholder="your name / handle" />
+   147|          </div>
+   148|          <div class="field-group">
+   149|            <label>Date</label>
+   150|            <input v-model="rule.date" type="date" class="inp" />
+   151|          </div>
+   152|          <div class="field-group">
+   153|            <label>Modified</label>
+   154|            <input v-model="rule.modified" type="date" class="inp" />
+   155|          </div>
+   156|        </div>
+   157|
+   158|        <div class="field-group">
+   159|          <label>References</label>
+   160|          <div v-for="(r, i) in rule.references" :key="i" class="list-row">
+   161|            <input v-model="rule.references[i]" class="inp" placeholder="https://..." />
+   162|            <button class="btn-icon danger" @click="removeListItem(rule.references, i)">×</button>
+   163|          </div>
+   164|          <button class="btn-add" @click="addListItem(rule.references)">+ add reference</button>
+   165|        </div>
+   166|
+   167|        <div class="field-group">
+   168|          <label>False Positives <button class="btn-ai-spark" @click="aiGenerate('falsepositives')" :class="{loading: aiState.falsepositives.loading}" :title="aiAvailable ? 'AI: brainstorm false positives' : 'Configure AI endpoint in Settings'">✨</button></label>
+   169|          <div v-for="(fp, i) in rule.falsepositives" :key="i" class="list-row">
+   170|            <input v-model="rule.falsepositives[i]" class="inp" placeholder="Legitimate admin activity..." />
+   171|            <button class="btn-icon danger" @click="removeListItem(rule.falsepositives, i)">×</button>
+   172|          </div>
+   173|          <button class="btn-add" @click="addListItem(rule.falsepositives)">+ add false positive</button>
+   174|        </div>
+   175|
+   176|        <div class="ai-inline-panel" v-if="aiState.falsepositives.visible || aiState.falsepositives.loading">
+   177|          <div class="ai-panel-header">
+   178|            <span class="mono label-xs">{{ aiPanelHeading('falsepositives') }}</span>
+   179|            <button class="btn-icon" @click="aiDismiss('falsepositives')">×</button>
+   180|          </div>
+   181|          <div v-if="aiState.falsepositives.loading" class="ai-streaming-text streaming">{{ aiState.falsepositives.text || aiLoadingLabel('falsepositives') }}</div>
+   182|          <div v-else-if="aiState.falsepositives.error" class="ai-error">{{ aiState.falsepositives.error }}</div>
+   183|          <div v-else class="ai-fp-list">
+   184|            <div v-for="(fp, i) in aiState.falsepositives.suggestions" :key="i" class="ai-fp-item">
+   185|              <span>{{ fp }}</span>
+   186|              <button class="btn-tool small accent" @click="acceptFP(fp)">Add</button>
+   187|            </div>
+   188|          </div>
+   189|          <div class="ai-actions" v-if="!aiState.falsepositives.loading && aiState.falsepositives.suggestions.length">
+   190|            <button class="btn-tool small accent" @click="acceptAllFPs">Accept all</button>
+   191|            <button class="btn-tool small" @click="aiDismiss('falsepositives')">Dismiss</button>
+   192|          </div>
+   193|        </div>
+   194|
+   195|        <div class="field-group">
+   196|          <label>Output Fields <span class="hint">(optional)</span></label>
+   197|          <div v-for="(f, i) in rule.fields" :key="i" class="list-row">
+   198|            <input v-model="rule.fields[i]" class="inp mono-inp"
+   199|                   :placeholder="fieldSuggestions[0] || 'FieldName'" />
+   200|            <button class="btn-icon danger" @click="removeListItem(rule.fields, i)">×</button>
+   201|          </div>
+   202|          <button class="btn-add" @click="addListItem(rule.fields)">+ add field</button>
+   203|        </div>
+   204|
+   205|      </div>
+   206|
+   207|      <!-- ══ LOGSOURCE ════════════════════════════════════════════════════ -->
+   208|      <div v-show="activeTab === 'logsource'" class="tab-content">
+   209|
+   210|        <div class="field-group">
+   211|          <label>Quick Preset</label>
+   212|          <select v-model="selectedPreset" class="inp">
+   213|            <option value="">— select a preset —</option>
+   214|            <optgroup v-for="(group, gname) in logsourceGroups" :key="gname" :label="gname">
+   215|              <option v-for="ls in group" :key="ls.id" :value="ls.id">{{ ls.label }}</option>
+   216|            </optgroup>
+   217|          </select>
+   218|          <p class="hint-text">Presets fill the fields below and suggest detection field names.</p>
+   219|        </div>
+   220|
+   221|        <div class="separator"></div>
+   222|
+   223|        <div class="field-row">
+   224|          <div class="field-group">
+   225|            <label>Category</label>
+   226|            <input v-model="rule.logsource.category" class="inp mono-inp" placeholder="process_creation" />
+   227|          </div>
+   228|          <div class="field-group">
+   229|            <label>Product</label>
+   230|            <input v-model="rule.logsource.product" class="inp mono-inp" placeholder="windows" />
+   231|          </div>
+   232|          <div class="field-group">
+   233|            <label>Service</label>
+   234|            <input v-model="rule.logsource.service" class="inp mono-inp" placeholder="sysmon" />
+   235|          </div>
+   236|        </div>
+   237|
+   238|        <div v-if="fieldSuggestions.length" class="field-suggestions">
+   239|          <p class="label-xs mono">Available fields for this logsource:</p>
+   240|          <div class="field-chips">
+   241|            <span v-for="f in fieldSuggestions" :key="f" class="chip mono">{{ f }}</span>
+   242|          </div>
+   243|        </div>
+   244|
+   245|      </div>
+   246|
+   247|      <!-- ══ DETECTION ════════════════════════════════════════════════════ -->
+   248|      <div v-show="activeTab === 'detection'" class="tab-content">
+   249|
+   250|        <div v-for="group in rule.detection.groups" :key="group.id" class="detection-group">
+   251|          <div class="group-header">
+   252|            <input v-model="group.name" class="inp group-name-inp mono-inp" placeholder="selection" />
+   253|            <div class="group-type-toggle">
+   254|              <button class="btn-type" :class="{ active: group.type === 'fields' }"
+   255|                      @click="group.type = 'fields'">fields</button>
+   256|              <button class="btn-type" :class="{ active: group.type === 'keywords' }"
+   257|                      @click="group.type = 'keywords'">keywords</button>
+   258|            </div>
+   259|            <button class="btn-icon danger" @click="removeGroup(group.id)"
+   260|                    :disabled="rule.detection.groups.length <= 1">×</button>
+   261|          </div>
+   262|
+   263|          <!-- Field mode -->
+   264|          <div v-if="group.type === 'fields'" class="group-fields">
+   265|            <div v-for="field in group.fields" :key="field.id" class="field-entry">
+   266|              <div class="field-entry-top">
+   267|                <div class="field-name-wrap">
+   268|                  <input v-model="field.field" class="inp mono-inp field-name-inp"
+   269|                         placeholder="FieldName" list="field-suggestions-list" />
+   270|                  <datalist id="field-suggestions-list">
+   271|                    <option v-for="f in fieldSuggestions" :key="f" :value="f" />
+   272|                  </datalist>
+   273|                </div>
+   274|                <select v-model="field.modifier" class="inp modifier-sel">
+   275|                  <option v-for="m in data.modifiers" :key="m.value" :value="m.value">{{ m.label }}</option>
+   276|                </select>
+   277|                <button class="btn-icon danger" @click="removeField(group, field.id)"
+   278|                        :disabled="group.fields.length <= 1">×</button>
+   279|              </div>
+   280|              <div class="field-values">
+   281|                <div v-for="(val, vi) in field.values" :key="vi" class="list-row value-row">
+   282|                  <input v-model="field.values[vi]" class="inp mono-inp" placeholder="value" />
+   283|                  <button class="btn-icon danger" @click="removeValue(field, vi)"
+   284|                          :disabled="field.values.length <= 1">×</button>
+   285|                </div>
+   286|                <button class="btn-add small" @click="addValue(field)">+ value</button>
+   287|              </div>
+   288|            </div>
+   289|            <button class="btn-add" @click="addField(group)">+ add field</button>
+   290|          </div>
+   291|
+   292|          <!-- Keyword mode -->
+   293|          <div v-if="group.type === 'keywords'" class="group-keywords">
+   294|            <p class="hint-text">Keywords match against full log event text (no field binding).</p>
+   295|            <div v-for="(kw, ki) in group.keywords" :key="ki" class="list-row">
+   296|              <input v-model="group.keywords[ki]" class="inp mono-inp" placeholder="keyword" />
+   297|              <button class="btn-icon danger" @click="removeKeyword(group, ki)"
+   298|                      :disabled="group.keywords.length <= 1">×</button>
+   299|            </div>
+   300|            <button class="btn-add" @click="addKeyword(group)">+ add keyword</button>
+   301|          </div>
+   302|        </div>
+   303|
+   304|        <div class="detection-ai-bar">
+   305|          <button class="btn-add group-add" @click="addGroup">+ add selection group</button>
+   306|          <button class="btn-tool btn-ai small" @click="aiGenerate('detection')" :class="{loading: aiState.detection.loading}" :title="aiAvailable ? 'AI: suggest detection fields' : 'Configure AI endpoint in Settings'">✨ suggest detection</button>
+   307|        </div>
+   308|
+   309|        <!-- AI Detection suggestions panel -->
+   310|        <div class="ai-inline-panel ai-detection-panel" v-if="aiState.detection.visible || aiState.detection.loading">
+   311|          <div class="ai-panel-header">
+   312|            <span class="mono label-xs">{{ aiPanelHeading('detection') }}</span>
+   313|            <button class="btn-icon" @click="aiDismiss('detection')">×</button>
+   314|          </div>
+   315|          <div v-if="aiState.detection.loading" class="ai-streaming-text streaming">{{ aiState.detection.text || aiLoadingLabel('detection') }}</div>
+   316|          <div v-else-if="aiState.detection.error" class="ai-error">{{ aiState.detection.error }}</div>
+   317|          <template v-else-if="aiState.detection.suggestions.length">
+   318|            <p class="ai-detection-summary" v-if="aiState.detection.summary">{{ aiState.detection.summary }}</p>
+   319|
+   320|            <!-- Suggested groups -->
+   321|            <div v-if="aiState.detection.suggestions[0]?.groups?.length" class="ai-det-section">
+   322|              <span class="mono label-xs ai-det-section-label">SELECTION GROUPS</span>
+   323|              <div v-for="(g, gi) in aiState.detection.suggestions[0].groups" :key="gi" class="ai-det-group">
+   324|                <div class="ai-det-group-header">
+   325|                  <code class="ai-det-name">{{ g.name }}</code>
+   326|                  <span class="ai-det-rationale">{{ g.rationale }}</span>
+   327|                  <button class="btn-tool small accent" @click="acceptDetectionGroup(g, false)">+ add group</button>
+   328|                </div>
+   329|                <div class="ai-det-fields">
+   330|                  <div v-for="(f, fi) in g.fields" :key="fi" class="ai-det-field">
+   331|                    <code>{{ f.field }}<span v-if="f.modifier">|{{ f.modifier }}</span></code>
+   332|                    <span class="ai-det-values">{{ Array.isArray(f.values) ? f.values.join(', ') : f.values }}</span>
+   333|                    <span class="ai-det-note" v-if="f.note">— {{ f.note }}</span>
+   334|                  </div>
+   335|                </div>
+   336|              </div>
+   337|            </div>
+   338|
+   339|            <!-- Suggested filters -->
+   340|            <div v-if="aiState.detection.suggestions[0]?.filters?.length" class="ai-det-section">
+   341|              <span class="mono label-xs ai-det-section-label">FILTER GROUPS</span>
+   342|              <div v-for="(f, fi) in aiState.detection.suggestions[0].filters" :key="fi" class="ai-det-group">
+   343|                <div class="ai-det-group-header">
+   344|                  <code class="ai-det-name">{{ f.name }}</code>
+   345|                  <span class="ai-det-rationale">{{ f.rationale }}</span>
+   346|                  <button class="btn-tool small" @click="acceptDetectionGroup(f, true)">+ add filter</button>
+   347|                </div>
+   348|                <div class="ai-det-fields">
+   349|                  <div v-for="(field, ffi) in f.fields" :key="ffi" class="ai-det-field">
+   350|                    <code>{{ field.field }}<span v-if="field.modifier">|{{ field.modifier }}</span></code>
+   351|                    <span class="ai-det-values">{{ Array.isArray(field.values) ? field.values.join(', ') : field.values }}</span>
+   352|                    <span class="ai-det-note" v-if="field.note">— {{ field.note }}</span>
+   353|                  </div>
+   354|                </div>
+   355|              </div>
+   356|            </div>
+   357|
+   358|            <!-- Condition suggestion -->
+   359|            <div v-if="aiState.detection.suggestions[0]?.condition_suggestion" class="ai-det-condition">
+   360|              <span class="mono label-xs">SUGGESTED CONDITION</span>
+   361|              <code>{{ aiState.detection.suggestions[0].condition_suggestion }}</code>
+   362|              <button class="btn-tool small" @click="acceptDetectionCondition(aiState.detection.suggestions[0].condition_suggestion)">Use</button>
+   363|            </div>
+   364|
+   365|            <!-- Legend -->
+   366|            <div class="annot-legend" style="margin-top:0.5rem">
+   367|              <span class="legend-label mono label-xs">LEGEND</span>
+   368|              <span class="legend-item" style="color:#4ade80">■ selection group</span>
+   369|              <span class="legend-item" style="color:#facc15">■ filter group</span>
+   370|              <span class="legend-item" style="color:#60a5fa">■ condition</span>
+   371|            </div>
+   372|
+   373|            <div class="ai-actions">
+   374|              <button class="btn-tool small accent" @click="acceptAllDetection">Accept all</button>
+   375|              <button class="btn-tool small" @click="aiDismiss('detection')">Dismiss</button>
+   376|            </div>
+   377|          </template>
+   378|        </div>
+   379|
+   380|        <div class="separator"></div>
+   381|
+   382|        <div class="field-group">
+   383|          <label>Condition <span class="req">*</span></label>
+   384|          <div class="condition-templates">
+   385|            <button v-for="ct in data.conditionTemplates" :key="ct.value"
+   386|                    class="btn-cond-tpl"
+   387|                    :class="{ active: rule.detection.condition === ct.value }"
+   388|                    @click="setConditionTemplate(ct.value)">
+   389|              {{ ct.label }}
+   390|            </button>
+   391|          </div>
+   392|          <input v-model="rule.detection.condition" class="inp mono-inp" placeholder="selection" />
+   393|        </div>
+   394|
+   395|        <div class="field-group">
+   396|          <label>Timeframe <span class="hint">(optional)</span></label>
+   397|          <input v-model="rule.detection.timeframe" class="inp mono-inp"
+   398|                 placeholder="e.g. 15m, 1h, 30s" />
+   399|        </div>
+   400|
+   401|      </div>
+   402|
+   403|      <!-- ══ TAGS ══════════════════════════════════════════════════════════ -->
+   404|      <div v-show="activeTab === 'tags'" class="tab-content tags-tab">
+   405|
+   406|        <!-- Custom tags list (keep as-is) -->
+   407|        <div class="field-group">
+   408|          <label>Rule Tags</label>
+   409|          <div v-for="(tag, i) in rule.tags" :key="i" class="list-row">
+   410|            <input v-model="rule.tags[i]" class="inp mono-inp" placeholder="attack.t1059.001" />
+   411|            <button class="btn-icon danger" @click="removeTag(i)">×</button>
+   412|          </div>
+   413|          <button class="btn-add" @click="addCustomTag">+ add tag</button>
+   414|        </div>
+   415|
+   416|        <div class="separator"></div>
+   417|
+   418|        <div class="ai-tag-suggest" v-if="aiState.tags.visible || aiState.tags.loading">
+   419|          <div class="ai-panel-header">
+   420|            <span class="mono label-xs">{{ aiPanelHeading('tags') }}</span>
+   421|            <button class="btn-icon" @click="aiDismiss('tags')">×</button>
+   422|          </div>
+   423|          <div v-if="aiState.tags.loading" class="ai-streaming-text">{{ aiState.tags.text || aiLoadingLabel('tags') }}</div>
+   424|          <div v-else-if="aiState.tags.error" class="ai-error">{{ aiState.tags.error }}</div>
+   425|          <div v-else class="ai-tag-chips">
+   426|            <button v-for="t in aiState.tags.suggestions" :key="t"
+   427|                    class="ai-tag-chip" :class="{ accepted: hasAiTag(t) }"
+   428|                    @click="acceptAiTag(t)">
+   429|              {{ t }} {{ hasAiTag(t) ? '✓' : '+' }}
+   430|            </button>
+   431|          </div>
+   432|          <div class="ai-actions" v-if="!aiState.tags.loading && aiState.tags.suggestions.length">
+   433|            <button class="btn-tool small accent" @click="acceptAllAiTags">Accept all</button>
+   434|            <button class="btn-tool small" @click="aiDismiss('tags')">Dismiss</button>
+   435|          </div>
+   436|        </div>
+   437|
+   438|        <!-- Matrix header -->
+   439|        <div class="matrix-header">
+   440|          <span class="label-xs mono">MITRE ATT&amp;CK ENTERPRISE — v14.1</span>
+   441|          <div class="matrix-controls">
+   442|            <input v-model="matrixSearch" class="inp matrix-search-inp" placeholder="Search techniques…" />
+   443|            <button class="btn-tool small" @click="matrixShowSubs = !matrixShowSubs">
+   444|              {{ matrixShowSubs ? '▾ hide subs' : '▸ show subs' }}
+   445|            </button>
+   446|            <button class="btn-tool small" @click="clearAllTags" v-if="selectedTechIds.size > 0">
+   447|              clear ({{ selectedTechIds.size }})
+   448|            </button>
+   449|            <button class="btn-tool small btn-ai" @click="aiGenerate('tags')" :class="{loading: aiState.tags.loading}">✨ suggest tags</button>
+   450|          </div>
+   451|        </div>
+   452|
+   453|        <!-- The matrix itself -->
+   454|        <div class="attack-matrix-wrap">
+   455|          <div class="attack-matrix">
+   456|            <!-- Tactic header row -->
+   457|            <div class="matrix-tactic-header" v-for="tac in matrixTactics" :key="tac.id">
+   458|              <span class="tactic-label">{{ tac.label }}</span>
+   459|              <span class="tactic-count">{{ tac.visibleCount }}</span>
+   460|            </div>
+   461|            <!-- Technique columns -->
+   462|            <div class="matrix-column" v-for="tac in matrixTactics" :key="'col-'+tac.id">
+   463|              <template v-for="tech in tac.techniques" :key="tech.id">
+   464|                <!-- Parent technique cell -->
+   465|                <div class="matrix-cell"
+   466|                     :class="{
+   467|                       selected: isSelected(tech.id),
+   468|                       'has-subs': tech.subs.length > 0,
+   469|                       'sub-expanded': expandedTechs.has(tech.id),
+   470|                       'search-match': matrixSearch && techMatchesSearch(tech),
+   471|                       'search-miss':  matrixSearch && !techMatchesSearch(tech) && !anySubMatches(tech),
+   472|                     }"
+   473|                     @click.stop="toggleTechCell(tech)"
+   474|                     @contextmenu="ctxMatrixCell($event, tech, false)">
+   475|                  <span class="cell-id">{{ tech.id }}</span>
+   476|                  <span class="cell-name">{{ tech.name }}</span>
+   477|                  <span v-if="tech.subs.length" class="cell-sub-toggle"
+   478|                        @click.stop="toggleExpand(tech.id)">
+   479|                    {{ expandedTechs.has(tech.id) ? '▾' : '▸' }} {{ tech.subs.length }}
+   480|                  </span>
+   481|                </div>
+   482|                <!-- Sub-technique cells (shown when expanded or show-subs mode) -->
+   483|                <template v-if="matrixShowSubs || expandedTechs.has(tech.id)">
+   484|                  <div v-for="sub in tech.subs" :key="sub.id"
+   485|                       class="matrix-cell matrix-sub-cell"
+   486|                       :class="{
+   487|                         selected: isSelected(sub.id),
+   488|                         'search-match': matrixSearch && subMatchesSearch(sub),
+   489|                         'search-miss':  matrixSearch && !subMatchesSearch(sub),
+   490|                       }"
+   491|                       @click="toggleSubCell(sub, tech)"
+   492|                       @contextmenu="ctxMatrixCell($event, sub, true)">
+   493|                    <span class="cell-id">{{ sub.id }}</span>
+   494|                    <span class="cell-name">{{ sub.name }}</span>
+   495|                  </div>
+   496|                </template>
+   497|              </template>
+   498|            </div>
+   499|          </div>
+   500|        </div>
+   501|
+   502|      </div>
+   503|
+   504|      <!-- ══ PREVIEW ═══════════════════════════════════════════════════════ -->
+   505|      <div v-show="activeTab === 'preview'" class="tab-content preview-tab">
+   506|
+   507|        <div v-if="lint.errors.length || lint.warnings.length" class="lint-box">
+   508|          <div v-for="e in lint.errors"   :key="e" class="lint-item lint-error">✕ {{ e }}</div>
+   509|          <div v-for="w in lint.warnings" :key="w" class="lint-item lint-warning">⚠ {{ w }}</div>
+   510|        </div>
+   511|        <div v-else class="lint-box lint-clean">✓ Rule looks good</div>
+   512|
+   513|        <div class="preview-actions">
+   514|          <button class="btn-tool" @click="copyYaml">{{ copied ? '✓ copied!' : '⎘ copy' }}</button>
+   515|          <button class="btn-tool accent" @click="exportRule">↓ export .yml</button>
+   516|          <button class="btn-tool btn-ai" @click="aiGenerate('explain')" :class="{loading: aiState.explain.loading}">✨ explain</button>
+   517|          <button class="btn-tool btn-ai" @click="aiGenerate('review')" :class="{loading: aiState.review.loading}">✨ review</button>
+   518|        </div>
+   519|
+   520|        <!-- AI Explain panel -->
+   521|        <div class="ai-inline-panel ai-explain-panel" v-if="aiState.explain.visible || aiState.explain.loading">
+   522|          <div class="ai-panel-header">
+   523|            <span class="mono label-xs">{{ aiPanelHeading('explain') }}</span>
+   524|            <button class="btn-icon" @click="aiDismiss('explain')">×</button>
+   525|          </div>
+   526|          <div class="ai-markdown-text" :class="{ streaming: aiState.explain.loading }" v-html="renderMarkdown(aiState.explain.text || (aiState.explain.loading ? aiLoadingLabel('explain') : ''))"></div>
+   527|          <div v-if="aiState.explain.error" class="ai-error">{{ aiState.explain.error }}</div>
+   528|        </div>
+   529|
+   530|        <!-- AI Review panel with annotated YAML -->
+   531|        <div class="ai-inline-panel ai-review-panel" v-if="aiState.review.visible || aiState.review.loading">
+   532|          <div class="ai-panel-header">
+   533|            <span class="mono label-xs">{{ aiPanelHeading('review') }}</span>
+   534|            <span v-if="aiState.review.score" class="review-score" :class="scoreClass(aiState.review.score)">{{ aiState.review.score }}/10</span>
+   535|            <button class="btn-icon" @click="aiDismiss('review')">×</button>
+   536|          </div>
+   537|          <div v-if="aiState.review.loading" class="ai-streaming-text streaming">{{ aiState.review.rawText || aiLoadingLabel('review') }}</div>
+   538|          <div v-else-if="aiState.review.error" class="ai-error">{{ aiState.review.error }}</div>
+   539|          <template v-else>
+   540|            <p class="review-summary" v-if="aiState.review.summary">{{ aiState.review.summary }}</p>
+   541|            <!-- Annotated YAML -->
+   542|            <pre class="yaml-annotated"><span
+   543|              v-for="(seg, i) in annotatedYamlSegments" :key="i"
+   544|              class="yaml-seg"
+   545|              :class="seg.severity ? `annot-${seg.severity}` : ''"
+   546|              :title="seg.note || ''"
+   547|            >{{ seg.text }}</span></pre>
+   548|            <!-- Legend -->
+   549|            <div class="annot-legend" v-if="aiState.review.annotations.length">
+   550|              <span class="legend-label mono label-xs">LEGEND</span>
+   551|              <span class="legend-item annot-error">■ error</span>
+   552|              <span class="legend-item annot-warning">■ warning</span>
+   553|              <span class="legend-item annot-info">■ info</span>
+   554|              <span class="legend-item annot-good">■ good</span>
+   555|            </div>
+   556|            <!-- Annotation list -->
+   557|            <div class="annot-list">
+   558|              <div v-for="(a, i) in aiState.review.annotations" :key="i" class="annot-item" :class="`annot-item-${a.severity}`">
+   559|                <span class="annot-badge" :class="`annot-${a.severity}`">{{ a.severity }}</span>
+   560|                <code class="annot-target">{{ a.target }}</code>
+   561|                <span class="annot-note">{{ a.note }}</span>
+   562|              </div>
+   563|            </div>
+   564|          </template>
+   565|        </div>
+   566|
+   567|        <pre class="yaml-preview" @contextmenu="ctxYamlPreview($event)">{{ yamlOutput }}</pre>
+   568|
+   569|        <!-- ── Converter ─────────────────────────────────────────── -->
+   570|        <div class="converter-panel">
+   571|          <div class="converter-header">
+   572|            <span class="mono label-xs">QUERY CONVERTER</span>
+   573|            <span class="hint-text" style="font-size:0.7rem">Best-effort — always review before use</span>
+   574|          </div>
+   575|          <!-- Target selector -->
+   576|          <div class="converter-tabs">
+   577|            <button v-for="t in ['spl','kql','eql']" :key="t"
+   578|                    class="btn-conv-tab" :class="{ active: converterTarget === t }"
+   579|                    @click="converterTarget = t">{{ t.toUpperCase() }}</button>
+   580|          </div>
+   581|          <!-- Output -->
+   582|          <div class="converter-output-wrap">
+   583|            <pre class="converter-output">{{ converterOutput }}</pre>
+   584|            <button class="btn-copy-conv" @click="copyConverterOutput" title="Copy to clipboard">copy</button>
+   585|          </div>
+   586|          <!-- Note if present -->
+   587|          <p v-if="converterNote" class="converter-note">⚠ {{ converterNote }}</p>
+   588|        </div>
+   589|
+   590|      </div>
+   591|    </div>
+   592|
+   593|    <!-- RIGHT: live preview -->
+   594|    <div class="preview-panel">
+   595|      <div class="preview-panel-header">
+   596|        <span class="mono label-xs">LIVE PREVIEW</span>
+   597|        <div class="preview-panel-actions">
+   598|          <button class="btn-tool small" @click="copyYaml">{{ copied ? '✓' : '⎘ copy' }}</button>
+   599|          <button class="btn-tool small accent" @click="exportRule">↓ export</button>
+   600|        </div>
+   601|      </div>
+   602|      <div v-if="lint.errors.length" class="lint-inline">
+   603|        <span v-for="e in lint.errors" :key="e" class="lint-err-inline">✕ {{ e }}</span>
+   604|      </div>
+   605|      <pre class="yaml-live" @contextmenu="ctxYamlPreview($event)">{{ yamlOutput }}</pre>
+   606|    </div>
+   607|
+   608|  </div><!-- /.builder-layout -->
+   609|
+   610|  <!-- ══ MODAL: COMMUNITY BROWSER ══════════════════════════════════════════ -->
+   611|  <div class="modal-overlay" v-if="showBrowser" @click.self="showBrowser = false">
+   612|    <div class="modal modal-browser">
+   613|      <div class="modal-header">
+   614|        <div class="modal-title-row">
+   615|          <span class="modal-title">SigmaHQ Community Rules</span>
+   616|          <a href="https://github.com/SigmaHQ/sigma" target="_blank" class="modal-link">
+   617|            github.com/SigmaHQ/sigma →
+   618|          </a>
+   619|        </div>
+   620|        <button class="btn-icon" @click="showBrowser = false">×</button>
+   621|      </div>
+   622|
+   623|      <div class="browser-layout">
+   624|        <!-- Left sidebar: categories -->
+   625|        <div class="browser-sidebar">
+   626|          <div v-for="(cats, grp) in communityGroups" :key="grp" class="browser-group">
+   627|            <div class="browser-group-label mono label-xs">{{ grp }}</div>
+   628|            <button v-for="cat in cats" :key="cat.id"
+   629|                    class="browser-cat-btn"
+   630|                    :class="{ active: activeCatId === cat.id }"
+   631|                    @click="selectCategory(cat)">
+   632|              {{ cat.label.split(' — ')[1] || cat.label }}
+   633|            </button>
+   634|          </div>
+   635|        </div>
+   636|
+   637|        <!-- Right: file list -->
+   638|        <div class="browser-files">
+   639|          <div v-if="!activeCatId" class="browser-empty">
+   640|            <p>← Select a category to browse community rules</p>
+   641|            <p class="hint-text">Loads rule list from github.com/SigmaHQ/sigma on demand.</p>
+   642|            <p class="hint-text">Add a GitHub token in <button class="btn-inline-link" @click="showBrowser=false; showSettings=true">Settings ⚙</button> to avoid rate limits.</p>
+   643|          </div>
+   644|
+   645|          <template v-else>
+   646|            <div class="browser-files-header">
+   647|              <input v-model="browserSearch" class="inp browser-search"
+   648|                     placeholder="Filter rules…" />
+   649|              <span class="mono label-xs" v-if="catFiles.length">
+   650|                {{ filteredFiles.length }} / {{ catFiles.length }} rules
+   651|              </span>
+   652|            </div>
+   653|
+   654|            <div v-if="catLoading" class="browser-status">loading rules…</div>
+   655|            <div v-else-if="catError" class="browser-status err">{{ catError }}</div>
+   656|            <div v-else-if="ruleError" class="browser-status err">{{ ruleError }}</div>
+   657|
+   658|            <div class="browser-file-list">
+   659|              <button v-for="file in filteredFiles" :key="file.path"
+   660|                      class="browser-file-btn"
+   661|                      :disabled="ruleLoading"
+   662|                      @click="loadCommunityRule(file)"
+   663|                      @contextmenu.stop="ctxBrowserFile($event, file)">
+   664|                <span class="browser-file-name">{{ file.name }}</span>
+   665|                <span class="browser-file-arrow">→</span>
+   666|              </button>
+   667|              <div v-if="!catLoading && filteredFiles.length === 0 && catFiles.length > 0"
+   668|                   class="browser-status">
+   669|                No rules match "{{ browserSearch }}"
+   670|              </div>
+   671|            </div>
+   672|          </template>
+   673|        </div>
+   674|      </div>
+   675|    </div>
+   676|  </div>
+   677|
+   678|  <!-- ══ MODAL: LOCAL TEMPLATES ════════════════════════════════════════════ -->
+   679|  <div class="modal-overlay" v-if="showTemplates" @click.self="showTemplates = false">
+   680|    <div class="modal">
+   681|      <div class="modal-header">
+   682|        <span class="modal-title">Pinned Templates</span>
+   683|        <button class="btn-icon" @click="showTemplates = false">×</button>
+   684|      </div>
+   685|      <div class="modal-body">
+   686|        <p class="hint-text">Quick-start templates served from this repo.</p>
+   687|        <p v-if="templateError" class="error-text">{{ templateError }}</p>
+   688|        <div class="tpl-list">
+   689|          <button v-for="t in data.pinnedTemplates" :key="t.id"
+   690|                  class="tpl-card" :disabled="templateLoading"
+   691|                  @click="loadPinnedTemplate(t)">
+   692|            <span class="tpl-name">{{ t.label }}</span>
+   693|            <span class="tpl-arrow">→</span>
+   694|          </button>
+   695|        </div>
+   696|      </div>
+   697|    </div>
+   698|  </div>
+   699|
+   700|  <!-- ══ MODAL: IMPORT ════════════════════════════════════════════════════ -->
+   701|  <div class="modal-overlay" v-if="showImport" @click.self="showImport = false">
+   702|    <div class="modal modal-import">
+   703|      <div class="modal-header">
+   704|        <span class="modal-title">Import Existing Rule</span>
+   705|        <button class="btn-icon" @click="showImport = false">×</button>
+   706|      </div>
+   707|      <div class="modal-body">
+   708|        <p class="hint-text">Paste a Sigma rule YAML to edit it.</p>
+   709|        <p v-if="importError" class="error-text">{{ importError }}</p>
+   710|        <textarea v-model="importText" class="inp yaml-import-area"
+   711|                  placeholder="title: ...&#10;logsource:&#10;  ..."></textarea>
+   712|        <div class="modal-footer">
+   713|          <button class="btn-tool" @click="showImport = false">cancel</button>
+   714|          <button class="btn-tool accent" @click="doImport">import →</button>
+   715|        </div>
+   716|      </div>
+   717|    </div>
+   718|  </div>
+   719|
+   720|  <!-- ══ MODAL: SETTINGS ══════════════════════════════════════════════════ -->
+   721|  <div class="modal-overlay" v-if="showSettings" @click.self="showSettings = false">
+   722|    <div class="modal modal-settings">
+   723|      <div class="modal-header">
+   724|        <span class="modal-title">Settings</span>
+   725|        <button class="btn-icon" @click="showSettings = false">×</button>
+   726|      </div>
+   727|      <div class="modal-body">
+   728|        <div class="field-group">
+   729|          <label>GitHub Personal Access Token</label>
+   730|          <input v-model="githubToken" type="password" class="inp mono-inp"
+   731|                 placeholder="ghp_xx...xxxx" />
+   732|          <p class="hint-text">
+   733|            Optional. Raises GitHub API rate limit from 60 to 5,000 req/hr.
+   734|            Only needs <strong>public_repo</strong> read scope (or no scope — public repos are readable unauthenticated).
+   735|            Stored in <code>localStorage</code> only — never sent anywhere except api.github.com.
+   736|          </p>
+   737|          <a href="https://github.com/settings/tokens/new?description=sigma-builder&scopes=" 
+   738|             target="_blank" class="hint-link">Generate a token →</a>
+   739|        </div>
+   740|        <!-- AI / LM section header -->
+   741|        <div class="settings-section-head">
+   742|          <span>AI (optional)</span>
+   743|          <span class="hint">LM Studio · Ollama · OpenAI · any OpenAI-compatible</span>
+   744|        </div>
+   745|
+   746|        <!-- Endpoint + live status badge -->
+   747|        <div class="field-group">
+   748|          <label>AI Endpoint URL <span class="hint">(OpenAI-compatible)</span></label>
+   749|          <div class="endpoint-row">
+   750|            <input v-model="aiEndpoint" class="inp mono-inp endpoint-inp"
+   751|                   placeholder="http://localhost:1234/v1"
+   752|                   @input="onEndpointInput" />
+   753|            <span class="ai-live-badge" :class="aiLiveBadgeClass">{{ aiLiveBadgeText }}</span>
+   754|          </div>
+   755|          <p class="hint-text">Works with LM Studio, Ollama, OpenAI, or any OpenAI-compatible server. Leave blank to disable AI.</p>
+   756|        </div>
+   757|
+   758|        <!-- Model picker — dropdown after models are fetched, text input as fallback -->
+   759|        <div class="field-group">
+   760|          <label>Model <span class="hint">(pick one to use for AI suggestions)</span></label>
+   761|          <div class="model-row">
+   762|            <select v-if="aiAvailableModels.length" v-model="aiModel" class="inp" @change="onAiSettingChange">
+   763|              <option value="">— pick a model —</option>
+   764|              <option v-for="m in aiAvailableModels" :key="m" :value="m">{{ m }}</option>
+   765|            </select>
+   766|            <input v-else v-model="aiModel" class="inp mono-inp" placeholder="model-name" @input="onAiSettingChange" />
+   767|            <button class="btn-tool small" @click="refreshModels" :disabled="aiLiveStatus === 'testing'" title="Re-fetch model list">↺</button>
+   768|          </div>
+   769|          <div v-if="aiModel" class="hint" style="margin-top:0.5rem">
+   770|            <span v-if="aiModelRecommendation">{{ aiModelRecommendation }} · </span>
+   771|            <strong>For JSON tasks:</strong> prefer non-thinking models or reduce max_tokens.
+   772|          </div>
+   773|        </div>
+   774|
+   775|        <!-- API Key -->
+   776|        <div class="field-group">
+   777|          <label>API Key <span class="hint">(optional — leave blank for local)</span></label>
+   778|          <input v-model="aiApiKey" type="password" class="inp mono-inp" placeholder="sk-… or blank for LM Studio/Ollama" @input="onAiSettingChange" />
+   779|        </div>
+   780|
+   781|        <!-- Advanced settings (collapsible) -->
+   782|        <div class="field-group">
+   783|          <button class="btn-inline-link adv-toggle" @click="aiShowAdvanced = !aiShowAdvanced">
+   784|            {{ aiShowAdvanced ? '▾' : '▸' }} Advanced settings
+   785|          </button>
+   786|          <div v-if="aiShowAdvanced" class="adv-settings">
+   787|            <div class="adv-row">
+   788|              <label>Temperature <span class="hint">{{ aiAdvTemp }}</span></label>
+   789|              <input type="range" v-model.number="aiAdvTemp" min="0" max="1" step="0.05" class="range-inp" @change="onAiSettingChange" />
+   790|            </div>
+   791|            <div class="adv-row">
+   792|              <label>Max tokens</label>
+   793|              <input type="number" v-model.number="aiAdvMaxTokens" min="256" max="8192" step="128" class="inp inp-sm" @change="onAiSettingChange" />
+   794|            </div>
+   795|          </div>
+   796|        </div>
+   797|
+   798|        <div class="modal-footer">
+   799|          <button class="btn-tool accent" @click="showSettings = false">Close</button>
+   800|        </div>
+   801|      </div>
+   802|    </div>
+   803|  </div>
+   804|
+   805|  <!-- ══ MODAL: NEW RULE WIZARD ══════════════════════════════════════════ -->
+   806|  <div class="modal-overlay" v-if="wizard.open" @click.self="wizard.open = false">
+   807|    <div class="modal modal-wizard">
+   808|      <div class="modal-header">
+   809|        <span class="modal-title">✦ New Rule Wizard</span>
+   810|        <div class="wizard-steps">
+   811|          <span v-for="i in 4" :key="i" class="wizard-step-dot"
+   812|                :class="{ active: wizard.step === i, done: wizard.step > i }">
+   813|            {{ wizard.step > i ? '●' : wizard.step === i ? '●' : '○' }}
+   814|          </span>
+   815|        </div>
+   816|        <button class="btn-icon" @click="wizard.open = false">×</button>
+   817|      </div>
+   818|      <div class="modal-body wizard-body">
+   819|
+   820|        <!-- Step 1: Scenario -->
+   821|        <div v-if="wizard.step === 1">
+   822|          <p class="hint-text" style="margin-bottom:1rem">What kind of detection are you building?</p>
+   823|          <div class="wizard-scenario-grid">
+   824|            <button v-for="sc in wizardScenarios" :key="sc.id"
+   825|                    class="wizard-scenario-card"
+   826|                    :class="{ active: wizard.scenario === sc.id }"
+   827|                    @click="wizard.scenario = sc.id">
+   828|              <span class="wizard-sc-icon">{{ sc.icon }}</span>
+   829|              <span class="wizard-sc-label">{{ sc.label }}</span>
+   830|              <span class="wizard-sc-desc">{{ sc.desc }}</span>
+   831|            </button>
+   832|          </div>
+   833|
+   834|          <div v-if="aiAvailable" class="ai-inline-panel" style="margin-top:1rem">
+   835|            <div class="ai-panel-header">
+   836|              <span class="mono label-xs">✨ BRAINSTORM STARTER RULE</span>
+   837|            </div>
+   838|            <textarea v-model="wizard.brainstormPrompt" class="inp" rows="3"
+   839|                      placeholder="Describe the detection idea, behavior, or hypothesis you want to turn into a Sigma draft."></textarea>
+   840|            <div class="ai-actions">
+   841|              <button class="btn-tool btn-ai small" :class="{ loading: wizard.brainstormLoading }" @click="wizardBrainstorm">
+   842|                ✨ brainstorm draft
+   843|              </button>
+   844|            </div>
+   845|            <div v-if="wizard.brainstormLoading" class="ai-streaming-text streaming">{{ wizard.brainstormText || 'Generating draft…' }}</div>
+   846|            <div v-else-if="wizard.brainstormPlan" class="ai-fp-list">
+   847|              <div class="ai-fp-item ai-desc-item">
+   848|                <span>
+   849|                  <strong>{{ wizard.brainstormPlan.title || 'Untitled draft' }}</strong><br>
+   850|                  <span class="hint">{{ wizard.brainstormPlan.description }}</span>
+   851|                </span>
+   852|                <button class="btn-tool small accent" @click="applyWizardBrainstorm(wizard.brainstormPlan)">use</button>
+   853|              </div>
+   854|              <div class="hint" v-if="wizard.brainstormPlan.scenario || wizard.brainstormPlan.logsource_id">
+   855|                Scenario: {{ wizard.brainstormPlan.scenario || 'custom' }}
+   856|                <span v-if="wizard.brainstormPlan.logsource_id"> · Preset: {{ wizard.brainstormPlan.logsource_id }}</span>
+   857|              </div>
+   858|            </div>
+   859|            <div v-else-if="wizard.brainstormText" class="ai-error">{{ wizard.brainstormText }}</div>
+   860|          </div>
+   861|        </div>
+   862|
+   863|        <!-- Step 2: Basics -->
+   864|        <div v-if="wizard.step === 2">
+   865|          <div class="field-group" style="margin-bottom:1rem">
+   866|            <label>Title <span class="req">*</span></label>
+   867|            <input v-model="wizard.title" class="inp" ref="wizardTitleRef"
+   868|                   placeholder="e.g. Suspicious PowerShell Encoded Command" />
+   869|          </div>
+   870|          <div class="field-group" style="margin-bottom:1rem">
+   871|            <label>Level</label>
+   872|            <div class="wizard-level-pills">
+   873|              <button v-for="lv in ['informational','low','medium','high','critical']" :key="lv"
+   874|                      class="wizard-level-pill" :class="[`pill-${lv}`, { active: wizard.level === lv }]"
+   875|                      @click="wizard.level = lv">{{ lv }}</button>
+   876|            </div>
+   877|          </div>
+   878|          <div class="field-group" style="margin-bottom:1rem">
+   879|            <label>Author</label>
+   880|            <input v-model="wizard.author" class="inp" placeholder="your name / handle" />
+   881|          </div>
+   882|          <div class="field-group">
+   883|            <label>
+   884|              Description
+   885|              <button v-if="aiAvailable" class="btn-ai-spark"
+   886|                      :class="{ loading: wizard.aiDescLoading }"
+   887|                      @click="wizardAiDescribe"
+   888|                      title="Generate a draft description">✨</button>
+   889|            </label>
+   890|            <textarea v-model="wizard.description" class="inp" rows="3"
+   891|                      placeholder="Optional — what does this rule detect?"></textarea>
+   892|            <div v-if="wizard.aiDescLoading" class="ai-streaming-text streaming" style="margin-top:0.35rem">{{ wizard.aiDescText || 'Generating description…' }}</div>
+   893|            <div v-else-if="wizard.aiDescText && !wizard.description" class="ai-inline-panel" style="margin-top:0.35rem">
+   894|              <div class="ai-streaming-text">{{ wizard.aiDescText }}</div>
+   895|              <div class="ai-actions">
+   896|                <button class="btn-tool small accent" @click="wizard.description = wizard.aiDescText; wizard.aiDescText = ''">Accept</button>
+   897|                <button class="btn-tool small" @click="wizard.aiDescText = ''">Dismiss</button>
+   898|              </div>
+   899|            </div>
+   900|          </div>
+   901|        </div>
+   902|
+   903|        <!-- Step 3: Logsource -->
+   904|        <div v-if="wizard.step === 3">
+   905|          <p class="hint-text" style="margin-bottom:0.75rem">Choose a logsource preset, or skip to configure manually.</p>
+   906|          <div v-if="aiAvailable" style="margin-bottom:0.75rem">
+   907|            <button class="btn-tool btn-ai" :class="{ loading: wizard.aiLsLoading }" @click="wizardAiLogsource">
+   908|              ✨ suggest logsource
+   909|            </button>
+   910|            <span v-if="wizard.aiLsText" class="hint" style="margin-left:0.5rem">{{ wizard.aiLsText }}</span>
+   911|          </div>
+   912|          <div class="wizard-ls-grid">
+   913|            <button v-for="ls in wizardFilteredLogsources" :key="ls.id"
+   914|                    class="wizard-ls-card"
+   915|                    :class="{ active: wizard.logsourceId === ls.id }"
+   916|                    @click="wizard.logsourceId = ls.id">
+   917|              <span class="wizard-ls-label">{{ ls.label }}</span>
+   918|              <span class="wizard-ls-meta mono">
+   919|                <span v-if="ls.category">cat: {{ ls.category }}</span>
+   920|                <span v-if="ls.product">  product: {{ ls.product }}</span>
+   921|                <span v-if="ls.service">  svc: {{ ls.service }}</span>
+   922|              </span>
+   923|            </button>
+   924|            <button class="wizard-ls-card" :class="{ active: wizard.logsourceId === '' }" @click="wizard.logsourceId = ''">
+   925|              <span class="wizard-ls-label">⊘ Skip / manual</span>
+   926|              <span class="wizard-ls-meta">Configure logsource manually in editor</span>
+   927|            </button>
+   928|          </div>
+   929|        </div>
+   930|
+   931|        <!-- Step 4: Review -->
+   932|        <div v-if="wizard.step === 4">
+   933|          <p class="hint-text" style="margin-bottom:0.75rem">Review the rule that will be created:</p>
+   934|          <pre class="wizard-yaml-preview">{{ wizardPreviewYaml }}</pre>
+   935|        </div>
+   936|
+   937|      </div>
+   938|      <div class="modal-footer wizard-footer">
+   939|        <button class="btn-tool" @click="wizard.open = false">cancel</button>
+   940|        <div style="display:flex;gap:0.5rem">
+   941|          <button class="btn-tool" v-if="wizard.step > 1" @click="wizard.step--">← back</button>
+   942|          <button class="btn-tool" v-if="wizard.step < 4"
+   943|                  :disabled="wizard.step === 1 && !wizard.scenario"
+   944|                  @click="wizardNext">next →</button>
+   945|          <button class="btn-tool accent" v-if="wizard.step === 4" @click="wizardStart">▶ start editing</button>
+   946|        </div>
+   947|      </div>
+   948|    </div>
+   949|  </div>
+   950|
+   951|  <!-- ══ MODAL: RULE LIBRARY ══════════════════════════════════════════════ -->
+   952|  <div class="modal-overlay" v-if="showLibrary" @click.self="showLibrary = false">
+   953|    <div class="modal modal-library">
+   954|      <div class="modal-header">
+   955|        <div class="modal-title-row">
+   956|          <span class="modal-title">⊕ Rule Library</span>
+   957|          <span class="modal-link">{{ libraryEntries.length }} saved</span>
+   958|        </div>
+   959|        <button class="btn-icon" @click="showLibrary = false">×</button>
+   960|      </div>
+   961|      <div class="modal-body" style="padding-top:0.75rem">
+   962|        <!-- Search -->
+   963|        <input v-model="librarySearch" class="inp" placeholder="Search rules…" style="margin-bottom:0.75rem" />
+   964|        <!-- Empty state -->
+   965|        <div v-if="!libraryEntries.length" class="lib-empty">
+   966|          <p>No saved rules yet.</p>
+   967|          <p class="hint-text">Click <strong>⊙ save</strong> in the toolbar to save the current rule.</p>
+   968|        </div>
+   969|        <!-- No search results -->
+   970|        <div v-else-if="!libraryFiltered.length" class="lib-empty">
+   971|          <p class="hint-text">No rules match your search.</p>
+   972|        </div>
+   973|        <!-- Rule list -->
+   974|        <div v-else class="lib-list">
+   975|          <div v-for="entry in libraryFiltered" :key="entry.id" class="lib-entry">
+   976|            <div class="lib-entry-header" @click="libLoad(entry)">
+   977|              <span class="lib-level-badge" :style="{ '--lc': levelColor(entry.level) }">{{ entry.level }}</span>
+   978|              <span class="lib-title">{{ entry.title || 'Untitled' }}</span>
+   979|            </div>
+   980|            <div class="lib-entry-meta">
+   981|              <span class="hint">{{ entry.logsource?.product || entry.logsource?.category || '—' }}</span>
+   982|              <span class="hint">{{ entry.tags.slice(0,2).join(' · ') }}</span>
+   983|              <span class="hint lib-date">{{ formatRelativeTime(entry.savedAt) }}</span>
+   984|            </div>
+   985|            <div class="lib-entry-actions">
+   986|              <button class="btn-tool small" @click="libLoad(entry)">load</button>
+   987|              <button class="btn-tool small" @click="libDuplicate(entry)">duplicate</button>
+   988|              <button class="btn-tool small danger" @click="libDelete(entry.id)">delete</button>
+   989|            </div>
+   990|          </div>
+   991|        </div>
+   992|      </div>
+   993|    </div>
+   994|  </div>
+   995|
+   996|  <!-- ══ CONTEXT MENU ══ -->
+   997|  <Teleport to="body">
+   998|    <div v-if="ctxMenu.visible" class="ctx-overlay" @click="hideCtxMenu" @contextmenu.prevent="hideCtxMenu"></div>
+   999|    <div v-if="ctxMenu.visible" class="ctx-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }">
+  1000|      <template v-for="(item, i) in ctxMenu.items" :key="i">
+  1001|        <div v-if="item.separator" class="ctx-separator"></div>
+  1002|        <button v-else class="ctx-item" :class="{ disabled: item.disabled }"
+  1003|                @click="!item.disabled && (item.action(), hideCtxMenu())">
+  1004|          {{ item.label }}
+  1005|        </button>
+  1006|      </template>
+  1007|    </div>
+  1008|  </Teleport>
+  1009|
+  1010|</div><!-- /#app -->
+  1011|
+  1012|<footer class="footer">
+  1013|  <div class="footer-inner">
+  1014|    <span class="mono">sigma rule builder · <a href="https://noxxa7705.github.io">NOXXA</a></span>
+  1015|    <span class="mono text-muted">static · no backend · community rules via <a href="https://github.com/SigmaHQ/sigma" target="_blank">SigmaHQ/sigma</a></span>
+  1016|  </div>
+  1017|</footer>
+  1018|
+  1019|<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  1020|<script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+  1021|<script src="js/ai-panel-mixin.js"></script>
+  1022|<script src="js/attack-matrix.js"></script>
+  1023|<script src="js/sigma-data.js"></script>
+  1024|<script src="js/ai.js"></script>
+  1025|<script src="js/converter.js"></script>
+  1026|<script src="js/app.js"></script>
+  1027|</body>
+  1028|</html>
+  1029|
