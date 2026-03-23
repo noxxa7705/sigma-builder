@@ -1035,6 +1035,11 @@ createApp({
       // Try to parse as JSON first
       const parsed = AI.parseJsonFromText(raw);
       
+      // Debug: log if parsing fails on what looks like JSON
+      if (!parsed && (raw.startsWith('[') || raw.startsWith('{'))) {
+        console.warn('extractSuggestionList: JSON parsing failed for:', raw.slice(0, 100));
+      }
+      
       if (Array.isArray(parsed)) {
         return [...new Set(normalize(parsed))];
       }
