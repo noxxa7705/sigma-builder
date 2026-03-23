@@ -1053,7 +1053,7 @@ createApp({
       const normalize = (items) => items
         .map(item => typeof item === 'string' ? item : '')
         .map(item => mapper(item.trim()))
-        .filter(item => item)
+        .filter(item => item && item.length >= 3)  // At least 3 chars (filter out punctuation)
         .filter(item => !/^(?:\[|\{|\]|\}|```|json\b)/i.test(item))
         .filter(item => item.length < 500)
         .filter(item => !/^\s*[\[{].*[\]}]\s*$/.test(item));
