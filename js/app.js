@@ -558,7 +558,13 @@ createApp({
 
     // ── list helpers ───────────────────────────────────────────────────────
     function addListItem(arr)        { arr.push(''); }
-    function removeListItem(arr, idx){ if (arr.length > 1) arr.splice(idx, 1); }
+    function removeListItem(arr, idx){
+      // Allow deletion if there are multiple items, or if removing this leaves at least one placeholder
+      const willHaveEmpty = arr.some((item, i) => i !== idx && item.trim() === '');
+      if (arr.length > 1 && (arr.length > 2 || willHaveEmpty)) {
+        arr.splice(idx, 1);
+      }
+    }
 
     // ── GitHub token (localStorage, never sent anywhere else) ──────────────
     const githubToken = ref(localStorage.getItem('sigma_gh_token') || '');
