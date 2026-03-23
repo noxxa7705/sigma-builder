@@ -105,7 +105,7 @@ code {
   gap: 1rem;
 }
 .toolbar-left  { display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0; }
-.toolbar-right { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-left: auto; justify-content: flex-end; }
+.toolbar-right { display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0; margin-left: auto; }
 
 /* Tabs live inside the toolbar, centered */
 .toolbar-tabs {
@@ -669,6 +669,45 @@ select.level-critical       { color: var(--lvl-critical); }
   .builder-layout {
     /* use dynamic viewport height when available so mobile chrome bars don't cut content */
     height: calc(100dvh - var(--nav-h) - var(--toolbar-h) - 48px);
+  }
+}
+
+/* ---- Narrow desktop / laptop toolbar wraps into two rows ---- */
+@media (max-width: 1380px) {
+  :root {
+    --toolbar-h: 88px;
+  }
+
+  .toolbar {
+    height: auto;
+  }
+
+  .toolbar-inner {
+    flex-wrap: wrap;
+    align-items: center;
+    row-gap: 0.5rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .toolbar-left {
+    flex-shrink: 0;
+  }
+
+  .toolbar-tabs {
+    flex: 1 1 auto;
+    min-width: 420px;
+    justify-content: center;
+    height: 44px;
+  }
+
+  .toolbar-right {
+    flex: 0 0 100%;
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-end;
+    border-top: 1px solid var(--border);
+    padding-top: 0.5rem;
   }
 }
 
