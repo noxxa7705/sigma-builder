@@ -1473,10 +1473,17 @@ createApp({
       aiDismiss('tags');
       notify(`✓ Tags added`);
     }
-    function acceptFP(fp) {
+    function acceptFP(fp, suggestionIndex = -1) {
       const empties = rule.falsepositives.findIndex(f => !f.trim());
       if (empties >= 0) rule.falsepositives[empties] = fp;
-      else rule.falsepositives.push(fp);
+      else if (!rule.falsepositives.includes(fp)) rule.falsepositives.push(fp);
+
+      if (suggestionIndex >= 0) {
+        aiState.falsepositives.suggestions.splice(suggestionIndex, 1);
+        if (!aiState.falsepositives.suggestions.length) {
+          aiDismiss('falsepositives');
+        }
+      }
     }
     function acceptAllFPs() {
       aiState.falsepositives.suggestions.forEach(fp => acceptFP(fp));

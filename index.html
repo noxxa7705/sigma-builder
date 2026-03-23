@@ -8,6 +8,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Sigma Rule Builder — NOXXA</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="shortcut icon" href="favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -183,7 +185,7 @@
           <div v-else class="ai-fp-list">
             <div v-for="(fp, i) in aiState.falsepositives.suggestions" :key="i" class="ai-fp-item">
               <span>{{ fp }}</span>
-              <button class="btn-tool small" @click="acceptFP(fp)">Add</button>
+              <button class="btn-tool small" @click="acceptFP(fp, i)">Add</button>
             </div>
           </div>
           <div class="ai-actions" v-if="!aiState.falsepositives.loading && aiState.falsepositives.suggestions.length">
