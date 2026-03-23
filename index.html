@@ -826,6 +826,34 @@
               <span class="wizard-sc-desc">{{ sc.desc }}</span>
             </button>
           </div>
+
+          <div v-if="aiAvailable" class="ai-inline-panel" style="margin-top:1rem">
+            <div class="ai-panel-header">
+              <span class="mono label-xs">✨ BRAINSTORM STARTER RULE</span>
+            </div>
+            <textarea v-model="wizard.brainstormPrompt" class="inp" rows="3"
+                      placeholder="Describe the detection idea, behavior, or hypothesis you want to turn into a Sigma draft."></textarea>
+            <div class="ai-actions">
+              <button class="btn-tool btn-ai small" :class="{ loading: wizard.brainstormLoading }" @click="wizardBrainstorm">
+                ✨ brainstorm draft
+              </button>
+            </div>
+            <div v-if="wizard.brainstormLoading" class="ai-streaming-text streaming">{{ wizard.brainstormText || 'Thinking…' }}</div>
+            <div v-else-if="wizard.brainstormPlan" class="ai-fp-list">
+              <div class="ai-fp-item ai-desc-item">
+                <span>
+                  <strong>{{ wizard.brainstormPlan.title || 'Untitled draft' }}</strong><br>
+                  <span class="hint">{{ wizard.brainstormPlan.description }}</span>
+                </span>
+                <button class="btn-tool small accent" @click="applyWizardBrainstorm(wizard.brainstormPlan)">use</button>
+              </div>
+              <div class="hint" v-if="wizard.brainstormPlan.scenario || wizard.brainstormPlan.logsource_id">
+                Scenario: {{ wizard.brainstormPlan.scenario || 'custom' }}
+                <span v-if="wizard.brainstormPlan.logsource_id"> · Preset: {{ wizard.brainstormPlan.logsource_id }}</span>
+              </div>
+            </div>
+            <div v-else-if="wizard.brainstormText" class="ai-error">{{ wizard.brainstormText }}</div>
+          </div>
         </div>
 
         <!-- Step 2: Basics -->
@@ -853,7 +881,7 @@
               <button v-if="aiAvailable" class="btn-ai-spark"
                       :class="{ loading: wizard.aiDescLoading }"
                       @click="wizardAiDescribe"
-                      title="Let AI generate a description">✨ Let AI help</button>
+                      title="Generate a draft description">✨</button>
             </label>
             <textarea v-model="wizard.description" class="inp" rows="3"
                       placeholder="Optional — what does this rule detect?"></textarea>

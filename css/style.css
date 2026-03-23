@@ -837,17 +837,28 @@ select.level-critical       { color: var(--lvl-critical); }
 .btn-ai-spark {
   background: none; border: none; cursor: pointer;
   font-size: 0.85rem; padding: 0 0 0 4px;
-  opacity: 0.6; transition: opacity 0.15s, transform 0.15s;
+  opacity: 0.6; transition: opacity 0.15s, transform 0.15s, color 0.15s;
   vertical-align: middle;
 }
-.btn-ai-spark:hover { opacity: 1; transform: scale(1.2); }
-.btn-ai-spark.loading { animation: spin 1s linear infinite; }
+.btn-ai-spark:hover { opacity: 1; transform: scale(1.12); }
+.btn-ai-spark.loading {
+  opacity: 1;
+  color: var(--warn);
+  transform: none;
+  animation: ai-pulse 1s ease-in-out infinite;
+}
 
 .btn-ai { color: var(--warn); border-color: rgba(250,204,21,0.25); }
 .btn-ai:hover { border-color: var(--warn); background: rgba(250,204,21,0.06); }
-.btn-ai.loading { opacity: 0.6; }
+.btn-ai.loading {
+  opacity: 0.9;
+  animation: ai-pulse 1s ease-in-out infinite;
+}
 
-@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes ai-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
 
 .ai-inline-panel {
   background: var(--bg-2); border: 1px solid rgba(250,204,21,0.2);

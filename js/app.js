@@ -125,7 +125,7 @@ function ruleFromParsed(obj) {
   rule.level       = obj.level || 'medium';
   rule.tags        = (obj.tags || []).filter(Boolean);
   rule.references  = Array.isArray(obj.references) ? obj.references.filter(Boolean) : [];
-  rule.falsepositives = Array.isArray(obj.falsepositives) ? obj.falsepositives.filter(Boolean) : ['Unknown'];
+  rule.falsepositives = Array.isArray(obj.falsepositives) ? obj.falsepositives.filter(Boolean) : [''];
   rule.fields      = Array.isArray(obj.fields) ? obj.fields.filter(Boolean) : [];
 
   if (obj.logsource) {
@@ -170,11 +170,28 @@ function emptyRule() {
   return {
     title: '', id: uuid4(), status: 'experimental', description: '',
     author: '', date: todayStr(), modified: '', level: 'medium',
-    tags: [], references: [''], falsepositives: ['Unknown'], fields: [''],
+    tags: [], references: [''], falsepositives: [''], fields: [''],
     logsource: { category: '', product: '', service: '' },
     detection: { groups: [emptyGroup()], condition: 'selection', timeframe: '' },
     related: []
   };
+}
+
+function starterRule() {
+  const rule = emptyRule();
+  rule.title = 'Draft Sigma Rule';
+  rule.logsource.category = 'process_creation';
+  rule.logsource.product = 'windows';
+  rule.detection.groups = [{
+    id: uuid4(),
+    name: 'selection',
+    type: 'fields',
+    fields: [{ id: uuid4(), field: 'Image', modifier: 'endswith', values: ['example.exe'] }],
+    keywords: [''],
+  }];
+  rule.detection.condition = 'selection';
+  rule.falsepositives = ['Legitimate administrative or automation activity'];
+  return rule;
 }
 
 // ── linter ────────────────────────────────────────────────────────────────────
@@ -315,7 +332,7 @@ createApp({
     const data = window.SIGMA_DATA;
 
     // ── core state ─────────────────────────────────────────────────────────
-    const rule = reactive(emptyRule());
+    const rule = reactive(starterRule());
 
     // ── Load from URL hash on startup ──────────────────────────────────────
     (function() {
@@ -668,7 +685,7 @@ createApp({
     // ── new / reset ────────────────────────────────────────────────────────────
     function newRule() {
       if (!confirm('Start a new rule? Unsaved changes will be lost.')) return;
-      Object.assign(rule, emptyRule());
+      Object.assign(rule, starterRule());
       selectedPreset.value = '';
       activeTab.value = 'metadata';
       notify('New rule started');
@@ -719,6 +736,10 @@ createApp({
       logsourceId: '',
       aiDescLoading: false, aiDescText: '',
       aiLsLoading: false, aiLsText: '',
+      brainstormPrompt: '',
+      brainstormLoading: false,
+      brainstormText: '',
+      brainstormPlan: null,
     });
 
     const wizardFilteredLogsources = computed(() => {
@@ -764,6 +785,31 @@ createApp({
       // Set condition to 'selection' for scenarios that make sense
       if (sc !== 'blank') r.detection.condition = 'selection';
 
+      if (wizard.brainstormPlan?.detection_stub?.groups?.length) {
+        r.detection.groups = wizard.brainstormPlan.detection_stub.groups.map((group, idx) => ({
+          id: uuid4(),
+          name: group.name || (idx === 0 ? 'selection' : `group_${idx + 1}`),
+          type: group.type === 'keywords' ? 'keywords' : 'fields',
+          fields: Array.isArray(group.fields) && group.fields.length
+            ? group.fields.map(f => ({
+                id: uuid4(),
+                field: f.field || '',
+                modifier: f.modifier || '',
+                values: Array.isArray(f.values) && f.values.length ? f.values.map(v => String(v)) : [''],
+              }))
+            : [emptyField()],
+          keywords: Array.isArray(group.keywords) && group.keywords.length ? group.keywords.map(String) : [''],
+        }));
+      }
+
+      if (wizard.brainstormPlan?.detection_stub?.condition) {
+        r.detection.condition = wizard.brainstormPlan.detection_stub.condition;
+      }
+
+      if (Array.isArray(wizard.brainstormPlan?.falsepositives) && wizard.brainstormPlan.falsepositives.length) {
+        r.falsepositives = wizard.brainstormPlan.falsepositives.filter(Boolean);
+      }
+
       return r;
     }
 
@@ -778,6 +824,47 @@ createApp({
       wizard.logsourceId = '';
       wizard.aiDescText = '';
       wizard.aiLsText = '';
+      wizard.brainstormPrompt = '';
+      wizard.brainstormLoading = false;
+      wizard.brainstormText = '';
+      wizard.brainstormPlan = null;
+    }
+
+    function applyWizardBrainstorm(plan) {
+      if (!plan || typeof plan !== 'object') return;
+      const scenarios = new Set(wizardScenarios.map(sc => sc.id));
+      if (plan.scenario && scenarios.has(plan.scenario)) wizard.scenario = plan.scenario;
+      if (typeof plan.title === 'string' && plan.title.trim()) wizard.title = plan.title.trim();
+      if (typeof plan.description === 'string' && plan.description.trim()) wizard.description = plan.description.trim();
+      if (typeof plan.level === 'string' && ['informational', 'low', 'medium', 'high', 'critical'].includes(plan.level)) wizard.level = plan.level;
+      if (typeof plan.logsource_id === 'string') {
+        const found = data.logsources.find(ls => ls.id === plan.logsource_id.trim());
+        if (found) wizard.logsourceId = found.id;
+      }
+      wizard.brainstormPlan = plan;
+    }
+
+    function wizardBrainstorm() {
+      if (!AI.isConfigured()) { showSettings.value = true; notify('Configure an AI endpoint first'); return; }
+      if (!wizard.brainstormPrompt.trim()) return;
+
+      wizard.brainstormLoading = true;
+      wizard.brainstormText = '';
+      wizard.brainstormPlan = null;
+
+      AI.runAI(AI.PROMPTS.brainstorm(wizard.brainstormPrompt.trim()), {
+        onChunk(c) { wizard.brainstormText += c; },
+        onDone() {
+          wizard.brainstormLoading = false;
+          const parsed = AI.parseJsonFromText(wizard.brainstormText);
+          if (parsed && typeof parsed === 'object') applyWizardBrainstorm(parsed);
+          else wizard.brainstormText = 'Could not parse brainstorm output.';
+        },
+        onError(e) {
+          wizard.brainstormLoading = false;
+          wizard.brainstormText = `Error: ${e}`;
+        },
+      });
     }
 
     function wizardNext() {
@@ -833,13 +920,15 @@ createApp({
         onChunk(c) { wizard.aiLsText = (wizard.aiLsText === 'Thinking…' ? '' : wizard.aiLsText) + c; },
         onDone() {
           wizard.aiLsLoading = false;
-          const suggested = wizard.aiLsText.trim().replace(/[`"'\n]/g, '');
+          const suggested = extractSingleSuggestion(wizard.aiLsText)
+            .replace(/[`"']/g, '')
+            .trim();
           const found = data.logsources.find(l => l.id === suggested);
           if (found) {
             wizard.logsourceId = found.id;
             wizard.aiLsText = `✓ Suggested: ${found.label}`;
           } else {
-            wizard.aiLsText = `Could not match "${suggested}"`;
+            wizard.aiLsText = suggested ? `Could not match "${suggested}"` : 'Could not parse logsource suggestion.';
           }
         },
         onError(e) { wizard.aiLsLoading = false; wizard.aiLsText = `Error: ${e}`; },
@@ -920,6 +1009,68 @@ createApp({
       explain:        mkAiState(),
       review:         mkAiState(),
     });
+
+    function cleanAiText(raw) {
+      return String(raw || '')
+        .replace(/<think>[\s\S]*?<\/think>/gi, '')
+        .replace(/^```[a-z]*\n?/i, '')
+        .replace(/\n?```$/i, '')
+        .trim();
+    }
+
+    function extractSuggestionList(raw, { mapper = (item) => item } = {}) {
+      const parsed = AI.parseJsonFromText(raw);
+      const normalize = (items) => items
+        .map(item => typeof item === 'string' ? item : '')
+        .map(item => mapper(item.trim()))
+        .filter(Boolean);
+
+      if (Array.isArray(parsed)) {
+        return [...new Set(normalize(parsed))];
+      }
+
+      if (parsed && typeof parsed === 'object') {
+        const firstArray = Object.values(parsed).find(Array.isArray);
+        if (Array.isArray(firstArray)) return [...new Set(normalize(firstArray))];
+      }
+
+      const cleaned = cleanAiText(raw);
+      if (!cleaned) return [];
+
+      const lines = cleaned
+        .split(/\r?\n+/)
+        .map(line => line.replace(/^[-*•\d.)\s]+/, '').trim())
+        .filter(Boolean);
+
+      return [...new Set(normalize(lines.length ? lines : [cleaned]))];
+    }
+
+    function extractSingleSuggestion(raw) {
+      const parsed = AI.parseJsonFromText(raw);
+      if (typeof parsed === 'string') return parsed.trim();
+      if (Array.isArray(parsed)) {
+        const first = parsed.find(item => typeof item === 'string' && item.trim());
+        if (first) return first.trim();
+      }
+      if (parsed && typeof parsed === 'object') {
+        const firstString = Object.values(parsed).find(v => typeof v === 'string' && v.trim());
+        if (typeof firstString === 'string') return firstString.trim();
+      }
+
+      return cleanAiText(raw)
+        .split(/\r?\n+/)
+        .map(line => line.replace(/^[-*•\d.)\s]+/, '').trim())
+        .find(Boolean) || '';
+    }
+
+    function normalizeAttackTag(tag) {
+      const cleaned = String(tag || '')
+        .trim()
+        .replace(/^attack\./i, '')
+        .replace(/[`"'\s]/g, '')
+        .toLowerCase();
+      return cleaned ? `attack.${cleaned}` : '';
+    }
 
     // AI settings
     const aiEndpoint = ref(AI.getConfig().endpoint);
@@ -1035,25 +1186,16 @@ createApp({
           s.loading = false;
           const raw = s.rawText;
           if (feature === 'title') {
-            const parsed = AI.parseJsonFromText(raw);
-            s.suggestions = Array.isArray(parsed) ? parsed.filter(t => typeof t === 'string') : [];
+            s.suggestions = extractSuggestionList(raw);
             if (!s.suggestions.length) s.error = 'Could not parse title suggestions.';
           } else if (feature === 'describe') {
-            const parsed = AI.parseJsonFromText(raw);
-            s.suggestions = Array.isArray(parsed) ? parsed.filter(t => typeof t === 'string') : [];
-            // fallback: if model returned plain text instead of JSON, treat as single suggestion
-            if (!s.suggestions.length) {
-              const plain = raw.trim();
-              if (plain) s.suggestions = [plain];
-              else s.error = 'Could not parse description suggestions.';
-            }
+            s.suggestions = extractSuggestionList(raw);
+            if (!s.suggestions.length) s.error = 'Could not parse description suggestions.';
           } else if (feature === 'tags') {
-            const parsed = AI.parseJsonFromText(raw);
-            s.suggestions = Array.isArray(parsed) ? parsed.map(t => `attack.${t.toLowerCase()}`) : [];
+            s.suggestions = extractSuggestionList(raw, { mapper: normalizeAttackTag });
             if (!s.suggestions.length) s.error = 'Could not parse tag suggestions.';
           } else if (feature === 'falsepositives') {
-            const parsed = AI.parseJsonFromText(raw);
-            s.suggestions = Array.isArray(parsed) ? parsed : [];
+            s.suggestions = extractSuggestionList(raw);
             if (!s.suggestions.length) s.error = 'Could not parse false positive suggestions.';
           } else if (feature === 'detection') {
             const parsed = AI.parseJsonFromText(raw);
@@ -1069,12 +1211,13 @@ createApp({
               s.summary     = parsed.summary || '';
               s.score       = parsed.score   || 0;
               s.annotations = Array.isArray(parsed.annotations) ? parsed.annotations : [];
-              s.text        = raw;
+              s.text        = cleanAiText(raw);
             } else {
-              s.error = 'Could not parse review. Raw: ' + raw.slice(0, 200);
+              s.error = 'Could not parse review. Raw: ' + cleanAiText(raw).slice(0, 200);
             }
+          } else if (feature === 'explain') {
+            s.text = cleanAiText(raw);
           }
-          // explain just uses s.text as-is
         },
         onError(err) {
           s.loading = false;
@@ -1357,7 +1500,7 @@ createApp({
       copied, exportRule, copyYaml, copyShareLink,
       newRule, regenId, openWizard,
       wizard, wizardScenarios, wizardFilteredLogsources, wizardPreviewYaml,
-      wizardNext, wizardStart, wizardAiDescribe, wizardAiLogsource,
+      wizardNext, wizardStart, wizardAiDescribe, wizardAiLogsource, wizardBrainstorm, applyWizardBrainstorm,
       ctxMenu, hideCtxMenu, ctxMatrixCell, ctxBrowserFile, ctxYamlPreview,
       aiAvailable, aiState,
       aiEndpoint, aiModel, aiApiKey,

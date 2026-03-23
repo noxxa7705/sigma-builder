@@ -120,6 +120,24 @@
     }
   }
 
+  // ── Response text extraction ──────────────────────────────────────────────
+
+  function extractText(value) {
+    if (typeof value === 'string') return value;
+    if (Array.isArray(value)) {
+      return value.map(extractText).join('');
+    }
+    if (value && typeof value === 'object') {
+      if (typeof value.text === 'string') return value.text;
+      if (typeof value.content === 'string') return value.content;
+      if (Array.isArray(value.content)) return value.content.map(extractText).join('');
+      if (typeof value.output_text === 'string') return value.output_text;
+      if (Array.isArray(value.parts)) return value.parts.map(extractText).join('');
+      if (Array.isArray(value.items)) return value.items.map(extractText).join('');
+    }
+    return '';
+  }
+
   // ── Streaming runner ──────────────────────────────────────────────────────
 
   async function runAI(messages, { signal, onChunk, onDone, onError } = {}) {
@@ -169,8 +187,8 @@
           return;
         }
         const json = await resp.json();
-        const content = json.choices?.[0]?.message?.content || '';
-        if (onChunk) onChunk(content);
+        const content = extractText(json.choices?.[0]?.message?.content || json.choices?.[0]?.text || json.output_text || '');
+        if (content && onChunk) onChunk(content);
         if (onDone) onDone();
         return;
       } catch (e2) {
@@ -191,8 +209,8 @@
     if (!ct.includes('text/event-stream')) {
       try {
         const json = await resp.json();
-        const content = json.choices?.[0]?.message?.content || '';
-        if (onChunk) onChunk(content);
+        const content = extractText(json.choices?.[0]?.message?.content || json.choices?.[0]?.text || json.output_text || '');
+        if (content && onChunk) onChunk(content);
         if (onDone) onDone();
       } catch (e) {
         if (onError) onError('Failed to parse JSON response: ' + e.message);
@@ -220,7 +238,15 @@
           if (jsonStr === '[DONE]') continue;
           try {
             const obj = JSON.parse(jsonStr);
-            const delta = obj.choices?.[0]?.delta?.content;
+            const choice = obj.choices?.[0] || {};
+            const delta = extractText(
+              choice.delta?.content
+              || choice.delta?.text
+              || choice.message?.content
+              || choice.text
+              || obj.output_text
+              || ''
+            );
             if (delta && onChunk) onChunk(delta);
           } catch (_) {}
         }
@@ -238,27 +264,30 @@
 
   function parseJsonFromText(text) {
     if (!text) return null;
+    const cleanedText = String(text)
+      .replace(/<think>[\s\S]*?<\/think>/gi, '')
+      .trim();
     // Try direct parse first
-    try { return JSON.parse(text.trim()); } catch (_) {}
+    try { return JSON.parse(cleanedText); } catch (_) {}
     // Extract from ```json ... ``` block
-    const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    const fence = cleanedText.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (fence) {
       try { return JSON.parse(fence[1].trim()); } catch (_) {}
     }
     // Find first [ or { and try from there
-    const arrIdx = text.indexOf('[');
-    const objIdx = text.indexOf('{');
+    const arrIdx = cleanedText.indexOf('[');
+    const objIdx = cleanedText.indexOf('{');
     let start = -1;
     if (arrIdx !== -1 && (objIdx === -1 || arrIdx < objIdx)) start = arrIdx;
     else if (objIdx !== -1) start = objIdx;
     if (start !== -1) {
-      try { return JSON.parse(text.slice(start)); } catch (_) {}
+      try { return JSON.parse(cleanedText.slice(start)); } catch (_) {}
       // Try to find matching end bracket
-      const opener = text[start];
+      const opener = cleanedText[start];
       const closer = opener === '[' ? ']' : '}';
-      const end = text.lastIndexOf(closer);
+      const end = cleanedText.lastIndexOf(closer);
       if (end > start) {
-        try { return JSON.parse(text.slice(start, end + 1)); } catch (_) {}
+        try { return JSON.parse(cleanedText.slice(start, end + 1)); } catch (_) {}
       }
     }
     return null;
@@ -386,6 +415,40 @@ Return ONLY valid JSON — no markdown, no extra text.`,
         {
           role: 'user',
           content: `Review this Sigma rule and return the JSON assessment:\n\n${yaml}`,
+        },
+      ];
+    },
+
+    brainstorm(prompt) {
+      return [
+        {
+          role: 'system',
+          content: `You are helping a detection engineer bootstrap a Sigma rule draft from a rough idea. Return ONLY a valid JSON object with this structure:
+{
+  "scenario": "process|network|file|registry|auth|cloud|linux|blank",
+  "title": "concise draft rule title",
+  "description": "2-3 sentence draft description",
+  "level": "informational|low|medium|high|critical",
+  "logsource_id": "exact preset id if obvious, otherwise empty string",
+  "falsepositives": ["fp1", "fp2"],
+  "detection_stub": {
+    "condition": "selection",
+    "groups": [
+      {
+        "name": "selection",
+        "type": "fields",
+        "fields": [
+          { "field": "FieldName", "modifier": "contains", "values": ["value1"] }
+        ]
+      }
+    ]
+  }
+}
+Keep it practical and conservative. If the idea is vague, make the safest reasonable draft. Return JSON only.`,
+        },
+        {
+          role: 'user',
+          content: `Bootstrap a Sigma starter rule from this idea:\n\n${prompt}`,
         },
       ];
     },
