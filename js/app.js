@@ -1082,14 +1082,22 @@ createApp({
         return [...new Set(normalize(lines))];
       }
 
-      // Last resort: if it looks like JSON but we couldn't parse it, don't wrap it
+      // Last resort: if it looks like JSON but we couldn't parse it, try to salvage items
       if (cleaned.startsWith('[') || cleaned.startsWith('{')) {
-        return []; // Return empty instead of wrapping unparseable JSON
+        // Try to extract items between quotes: look for "..." patterns
+        const quoted = cleaned.match(/"([^"\\]|\\.)*"/g);
+        if (quoted && quoted.length > 0) {
+          // Remove the quotes and unescape
+          const items = quoted.map(q => q.slice(1, -1).replace(/\\"/g, '"'));
+          return [...new Set(normalize(items))];
+        }
+        // Still nothing, return empty
+        return [];
       }
 
       // Single item (plain text) - but filter out anything that looks like JSON syntax
       const singleItem = normalize([cleaned]);
-      return singleItem.filter(item => item.length < 500 && !item.includes('["') && !item.includes('"]'));
+      return singleItem.filter(item => item.length < 500 && !item.includes('[\"') && !item.includes('\"]'));
     }
 
     function extractSingleSuggestion(raw) {
