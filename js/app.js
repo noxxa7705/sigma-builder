@@ -1250,6 +1250,7 @@ createApp({
       const s = aiState[feature];
       s.visible = false; s.loading = false; s.text = ''; s.rawText = '';
       s.error = ''; s.suggestions = []; s.score = 0; s.summary = ''; s.annotations = [];
+      s._retryCount = 0; // Reset retry counter when dismissed
       if (s._abort) { s._abort.abort(); s._abort = null; }
     }
 
@@ -1260,6 +1261,11 @@ createApp({
       aiDismiss(feature);
       s.visible = true;
       s.loading = true;
+
+      // Track retry count for list-based features
+      s._retryCount = (s._retryCount || 0) + 1;
+      const isListFeature = ['title', 'describe', 'falsepositives', 'tags'].includes(feature);
+      const maxRetries = 3;
 
       const yaml = yamlOutput.value;
       const messages = AI.PROMPTS[feature](yaml);
@@ -1284,23 +1290,75 @@ createApp({
           const raw = s.rawText;
           if (feature === 'title') {
             s.suggestions = extractSuggestionList(raw);
-            if (!s.suggestions.length) s.error = 'Could not parse title suggestions.';
+            if (!s.suggestions.length) {
+              if (s._retryCount < maxRetries) {
+                s.loading = true;
+                s.rawText = '';
+                s.text = '';
+                aiGenerate(feature);
+              } else {
+                s.error = `Could not parse title suggestions after ${maxRetries} attempts.`;
+              }
+            } else {
+              s._retryCount = 0; // Reset on success
+            }
           } else if (feature === 'describe') {
             s.suggestions = extractSuggestionList(raw);
-            if (!s.suggestions.length) s.error = 'Could not parse description suggestions.';
+            if (!s.suggestions.length) {
+              if (s._retryCount < maxRetries) {
+                s.loading = true;
+                s.rawText = '';
+                s.text = '';
+                aiGenerate(feature);
+              } else {
+                s.error = `Could not parse description suggestions after ${maxRetries} attempts.`;
+              }
+            } else {
+              s._retryCount = 0; // Reset on success
+            }
           } else if (feature === 'tags') {
             s.suggestions = extractSuggestionList(raw, { mapper: normalizeAttackTag });
-            if (!s.suggestions.length) s.error = 'Could not parse tag suggestions.';
+            if (!s.suggestions.length) {
+              if (s._retryCount < maxRetries) {
+                s.loading = true;
+                s.rawText = '';
+                s.text = '';
+                aiGenerate(feature);
+              } else {
+                s.error = `Could not parse tag suggestions after ${maxRetries} attempts.`;
+              }
+            } else {
+              s._retryCount = 0; // Reset on success
+            }
           } else if (feature === 'falsepositives') {
             s.suggestions = extractSuggestionList(raw);
-            if (!s.suggestions.length) s.error = 'Could not parse false positive suggestions.';
+            if (!s.suggestions.length) {
+              if (s._retryCount < maxRetries) {
+                s.loading = true;
+                s.rawText = '';
+                s.text = '';
+                aiGenerate(feature);
+              } else {
+                s.error = `Could not parse false positive suggestions after ${maxRetries} attempts.`;
+              }
+            } else {
+              s._retryCount = 0; // Reset on success
+            }
           } else if (feature === 'detection') {
             const parsed = AI.parseJsonFromText(raw);
             if (parsed && (parsed.groups || parsed.filters)) {
               s.suggestions = [parsed]; // store parsed object in suggestions[0]
               s.summary = parsed.summary || '';
+              s._retryCount = 0; // Reset on success
             } else {
-              s.error = 'Could not parse detection suggestions.';
+              if (s._retryCount < maxRetries) {
+                s.loading = true;
+                s.rawText = '';
+                s.text = '';
+                aiGenerate(feature);
+              } else {
+                s.error = `Could not parse detection suggestions after ${maxRetries} attempts.`;
+              }
             }
           } else if (feature === 'review') {
             const parsed = AI.parseJsonFromText(raw);
@@ -1309,8 +1367,16 @@ createApp({
               s.score       = parsed.score   || 0;
               s.annotations = Array.isArray(parsed.annotations) ? parsed.annotations : [];
               s.text        = cleanAiText(raw);
+              s._retryCount = 0; // Reset on success
             } else {
-              s.error = 'Could not parse review. Raw: ' + cleanAiText(raw).slice(0, 200);
+              if (s._retryCount < maxRetries) {
+                s.loading = true;
+                s.rawText = '';
+                s.text = '';
+                aiGenerate(feature);
+              } else {
+                s.error = `Could not parse review after ${maxRetries} attempts.`;
+              }
             }
           } else if (feature === 'explain') {
             s.text = cleanAiText(raw);
