@@ -1337,23 +1337,17 @@ createApp({
             }
           } else if (feature === 'falsepositives') {
             s.suggestions = extractSuggestionList(raw);
-            // Debug logging
-            console.log('[DEBUG] falsepositives raw response:', raw.slice(0, 200));
-            console.log('[DEBUG] extracted suggestions:', s.suggestions);
             if (!s.suggestions.length) {
               if (s._retryCount < maxRetries) {
-                console.log('[DEBUG] Retrying falsepositives (attempt', s._retryCount + 1, ')');
                 s.loading = true;
                 s.rawText = '';
                 s.text = '';
                 aiGenerate(feature);
               } else {
                 s.error = `Could not parse false positive suggestions after ${maxRetries} attempts.`;
-                console.log('[DEBUG] falsepositives failed after max retries');
               }
             } else {
               s._retryCount = 0; // Reset on success
-              console.log('[DEBUG] falsepositives success');
             }
           } else if (feature === 'detection') {
             const parsed = AI.parseJsonFromText(raw);

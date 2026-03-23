@@ -377,11 +377,21 @@
       return [
         {
           role: 'system',
-          content: 'You are a Sigma detection rule naming expert. Suggest 4 concise, specific rule titles. Follow conventions like "Suspicious X via Y", "Potential X Execution", or "X Abuse by Y". Return ONLY a JSON array of strings — no explanation, no markdown.',
+          content: `You are a Sigma detection rule naming expert. Generate 4 concise, specific titles for detection rules. Titles should:
+- Clearly describe WHAT is being detected
+- Use patterns like: "Suspicious X", "Potential X Execution", "X Abuse", "Unauthorized X"
+- Be 5-10 words, technical and specific
+- Avoid generic terms like "Activity" or "Detection"
+
+Return ONLY a valid JSON array of 4 strings. No markdown, code fences, or explanation.
+
+Example for a PowerShell rule: ["Suspicious PowerShell Base64 Encoded Command", "Potential PowerShell Script Obfuscation", "Obfuscated PowerShell Execution via -EncodedCommand", "Suspicious Encoded Script Download via PowerShell"]`,
         },
         {
           role: 'user',
-          content: `Suggest 4 alternative titles for this Sigma rule. Return a JSON array of strings only:\n\n${yaml}`,
+          content: `Generate 4 alternative titles for this Sigma rule. Return ONLY the JSON array, nothing else:
+
+${yaml}`,
         },
       ];
     },
@@ -390,11 +400,21 @@
       return [
         {
           role: 'system',
-          content: 'You are a cybersecurity expert specializing in SIEM detection engineering. Generate 3 alternative description paragraphs for a Sigma detection rule. Each should be 2–3 sentences, plain text, technical and specific. Return ONLY a JSON array of strings — no explanation, no markdown headers.',
+          content: `You are a SIEM detection engineer writing rule descriptions. Generate 3 alternative descriptions for a Sigma rule. Each description should:
+- Be 2-3 sentences, plain text (no markdown)
+- Clearly explain WHAT the rule detects and WHY it's suspicious
+- Be technical but understandable to SOC analysts
+- Avoid generic phrases — be specific about the malicious behavior or legitimate concern
+
+Return ONLY a valid JSON array of 3 strings. No markdown, code fences, or explanation.
+
+Example: ["Detects when a process runs embedded PowerShell commands via the -EncodedCommand parameter, a common evasion technique used by malware to hide code execution. This pattern is suspicious because legitimate scripts typically use -File or -Command directly.", "Identifies suspicious use of Base64 encoded PowerShell commands, which is often used by attackers to obfuscate malware payloads. Legitimate administrative scripts rarely use the EncodedCommand parameter."]`,
         },
         {
           role: 'user',
-          content: `Generate 3 description variants for this Sigma rule. Return a JSON array of strings only:\n\n${yaml}`,
+          content: `Generate 3 description variants for this Sigma rule. Return ONLY the JSON array, nothing else:
+
+${yaml}`,
         },
       ];
     },
@@ -403,11 +423,24 @@
       return [
         {
           role: 'system',
-          content: 'You are a cybersecurity expert specializing in SIEM detection engineering. Return ONLY a JSON array of strings — false positive scenarios for the given Sigma rule. No explanation, no markdown. Example: ["Legitimate admin tools", "IT automation scripts"]',
+          content: `You are a SIEM detection engineer identifying false positive scenarios. Given a Sigma rule, list legitimate activities that would trigger it. Think about:
+- Routine administration and maintenance tasks
+- Legitimate security and monitoring tools
+- Automated processes and scheduled jobs
+- Normal application behavior
+
+Return ONLY a valid JSON array of strings. Each string is one false positive scenario (3-15 words, specific and realistic). No markdown, no code fences, no explanation.
+
+Example:
+["System administrator running routine antivirus scans", "Windows Update service downloading files", "Backup software accessing system binaries", "User opening legitimate executable from trusted folder"]`,
         },
         {
           role: 'user',
-          content: `List likely false positives for this Sigma rule. Return a JSON array of strings only:\n\n${yaml}`,
+          content: `Analyze this Sigma rule and list 4-5 realistic false positive scenarios that would trigger it. Return ONLY a JSON array of strings, no other text:
+
+${yaml}
+
+Return the JSON array directly, no markdown or explanation.`,
         },
       ];
     },
@@ -416,11 +449,21 @@
       return [
         {
           role: 'system',
-          content: 'You are a MITRE ATT&CK expert. Return ONLY a JSON array of MITRE ATT&CK technique IDs (e.g. ["T1059.001", "T1055"]) relevant to the given Sigma rule. No explanation, no markdown, no "attack." prefix — just the IDs.',
+          content: `You are a MITRE ATT&CK mapping expert. Given a Sigma rule, identify relevant MITRE ATT&CK technique IDs. Focus on:
+- Techniques matching the DETECTED BEHAVIOR (what the attacker does)
+- Sub-techniques when applicable (e.g., T1059.001 for PowerShell, T1087.004 for domain account enumeration)
+- Only techniques that the rule would actually detect
+- Use ONLY official IDs like T1234 or T1234.001, not generic categories
+
+Return ONLY a valid JSON array of technique ID strings. No explanation, code fences, or "attack." prefix.
+
+Example: ["T1059.001", "T1027", "T1140"]`,
         },
         {
           role: 'user',
-          content: `Suggest MITRE ATT&CK technique IDs for this Sigma rule. Return a JSON array of technique IDs only:\n\n${yaml}`,
+          content: `Map this Sigma rule to MITRE ATT&CK techniques. Return ONLY the JSON array of technique IDs, nothing else:
+
+${yaml}`,
         },
       ];
     },

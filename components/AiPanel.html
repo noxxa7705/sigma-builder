@@ -1,0 +1,97 @@
+<!-- Reusable AI Panel Component
+     
+Renders a consistent loading/error/content/footer pattern for all AI features.
+
+Props:
+  - feature: string (title|describe|falsepositives|tags|detection|explain|review)
+  - state: object from aiState[feature]
+  - visible: boolean (panel visibility condition)
+
+Slots:
+  - default: custom content to render when not loading/error
+  
+Events:
+  - @dismiss: when user clicks close button
+-->
+
+<template>
+  <div class="ai-inline-panel" v-if="visible" :class="panelClasses">
+    <!-- Header: title + close button (+ score badge for review) -->
+    <div class="ai-panel-header">
+      <span class="mono label-xs">{{ heading }}</span>
+      <span v-if="feature === 'review' && state.score" class="review-score" :class="scoreClass(state.score)">
+        {{ state.score }}/10
+      </span>
+      <button class="btn-icon" @click="$emit('dismiss')">×</button>
+    </div>
+
+    <!-- Loading state -->
+    <div v-if="state.loading" class="ai-streaming-text streaming" :class="{ 'streaming-explain': feature === 'explain' }">
+      {{ state.text || aiLoadingLabel(feature) }}
+    </div>
+
+    <!-- Error state -->
+    <div v-else-if="state.error" class="ai-error">
+      {{ state.error }}
+    </div>
+
+    <!-- Content (feature-specific, provided via slot) -->
+    <slot v-else name="default"></slot>
+
+    <!-- Footer actions (feature-specific, provided via slot) -->
+    <slot name="footer"></slot>
+  </div>
+</template>
+
+<script setup>
+defineProps({
+  feature: {
+    type: String,
+    required: true,
+    validator: (v) => ['title', 'describe', 'falsepositives', 'tags', 'detection', 'explain', 'review'].includes(v)
+  },
+  state: {
+    type: Object,
+    required: true
+  },
+  visible: {
+    type: Boolean,
+    default: true
+  },
+  scoreClass: {
+    type: Function,
+    default: () => ''
+  },
+  aiLoadingLabel: {
+    type: Function,
+    default: (f) => 'Generating…'
+  }
+});
+
+defineEmits(['dismiss']);
+
+// Re-export for template use
+const { feature, state } = defineProps;
+
+const AI_UI = {
+  title:          { heading: '✨ AI TITLE SUGGESTIONS' },
+  describe:       { heading: '✨ AI DESCRIPTION SUGGESTIONS' },
+  falsepositives: { heading: '✨ AI FALSE POSITIVE SUGGESTIONS' },
+  tags:           { heading: '✨ AI TAG SUGGESTIONS' },
+  detection:      { heading: '✨ AI DETECTION SUGGESTIONS' },
+  explain:        { heading: '✨ RULE EXPLANATION' },
+  review:         { heading: '✨ RULE REVIEW' },
+};
+
+const heading = computed(() => AI_UI[feature.value]?.heading || '✨ AI SUGGESTIONS');
+
+const panelClasses = computed(() => {
+  const classes = ['ai-chips-panel', 'ai-detection-panel', 'ai-explain-panel', 'ai-review-panel'];
+  return {
+    'ai-chips-panel': ['title', 'describe', 'falsepositives'].includes(feature.value),
+    'ai-detection-panel': feature.value === 'detection',
+    'ai-explain-panel': feature.value === 'explain',
+    'ai-review-panel': feature.value === 'review',
+  };
+});
+</script>
