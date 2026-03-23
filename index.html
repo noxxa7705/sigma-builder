@@ -92,7 +92,7 @@
           <div v-else class="ai-fp-list">
             <div v-for="(t, i) in aiState.title.suggestions" :key="i" class="ai-fp-item">
               <span>{{ t }}</span>
-              <button class="btn-tool small accent" @click="acceptTitle(t); aiDismiss('title')">Use</button>
+              <button class="btn-tool small" @click="acceptTitle(t); aiDismiss('title')">Add</button>
             </div>
           </div>
         </div>
@@ -135,7 +135,7 @@
           <div v-else class="ai-fp-list">
             <div v-for="(d, i) in aiState.describe.suggestions" :key="i" class="ai-fp-item ai-desc-item">
               <span>{{ d }}</span>
-              <button class="btn-tool small accent" @click="acceptDescription(d); aiDismiss('describe')">Use</button>
+              <button class="btn-tool small" @click="acceptDescription(d); aiDismiss('describe')">Add</button>
             </div>
           </div>
         </div>
