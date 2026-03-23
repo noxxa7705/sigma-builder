@@ -154,13 +154,16 @@
     const headers = { 'Content-Type': 'application/json' };
     if (c.apiKey) headers['Authorization'] = `Bearer ${c.apiKey}`;
 
-    // ── Attempt 1: use requested stream mode ────────────────────────────────
+    // ── Attempt 1: use requested stream mode with timeout ─────────────────────
     let resp;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
+    
     try {
       resp = await fetch(url, {
         method: 'POST',
         headers,
-        signal,
+        signal: controller.signal,
         body: JSON.stringify({
           model: c.model,
           messages,
@@ -169,14 +172,21 @@
           max_tokens: c.advanced?.maxTokens ?? 1024,
         }),
       });
+      clearTimeout(timeout);
     } catch (e) {
-      if (e.name === 'AbortError') return;
+      clearTimeout(timeout);
+      if (e.name === 'AbortError') {
+        if (onError) onError('Request timed out (30s). Check AI endpoint connectivity.');
+        return;
+      }
       // Network error → retry once with stream: false
+      const controller2 = new AbortController();
+      const timeout2 = setTimeout(() => controller2.abort(), 30000);
       try {
         resp = await fetch(url, {
           method: 'POST',
           headers,
-          signal,
+          signal: controller2.signal,
           body: JSON.stringify({
             model: c.model,
             messages,
@@ -185,6 +195,7 @@
           max_tokens: c.advanced?.maxTokens ?? 1024,
           }),
         });
+        clearTimeout(timeout2);
         if (!resp.ok) {
           const text = await resp.text().catch(() => '');
           if (onError) onError(`HTTP ${resp.status}: ${text.slice(0, 120)}`);
@@ -243,6 +254,7 @@
     const decoder = new TextDecoder();
     let buf = '';
     let streamedText = '';
+    const streamTimeout = setTimeout(() => controller.abort(), 60000); // 60s for streaming
 
     try {
       while (true) {
@@ -286,11 +298,16 @@
         }
       }
     } catch (e) {
-      if (e.name === 'AbortError') return;
+      clearTimeout(streamTimeout);
+      if (e.name === 'AbortError') {
+        if (onError) onError('Stream timeout (60s). Check AI endpoint connectivity.');
+        return;
+      }
       if (onError) onError(e.message);
       return;
     }
 
+    clearTimeout(streamTimeout);
     if (onDone) onDone();
   }
 
