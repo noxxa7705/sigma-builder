@@ -1178,6 +1178,16 @@ createApp({
       await doLiveTest();
     }
 
+    // Watch for settings modal open — auto-detect endpoint
+    watch(() => showSettings.value, (isOpen) => {
+      if (isOpen && aiEndpoint.value && AI.isConfigured()) {
+        // Settings opened and we have a configured endpoint — test connection
+        if (aiLiveStatus.value === 'idle' || aiLiveStatus.value === 'error') {
+          doLiveTest();
+        }
+      }
+    });
+
     function aiDismiss(feature) {
       const s = aiState[feature];
       s.visible = false; s.loading = false; s.text = ''; s.rawText = '';
