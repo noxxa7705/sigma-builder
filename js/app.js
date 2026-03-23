@@ -62,6 +62,10 @@ function buildYaml(rule) {
   lines.push('detection:');
   rule.detection.groups.forEach(group => {
     const name = group.name || 'selection';
+    // Add AI rationale as comment if present
+    if (group._aiRationale) {
+      lines.push(`  # ${group._aiRationale}`);
+    }
     if (group.type === 'keywords') {
       lines.push(`  ${name}:`);
       group.keywords.filter(Boolean).forEach(kw => lines.push(`    - ${yamlStr(kw)}`));
@@ -144,6 +148,7 @@ function ruleFromParsed(obj) {
         id: g.id || uuid4(),
         name: g.name || (idx === 0 ? 'selection' : `filter_${idx}`),
         type: g.type === 'keywords' ? 'keywords' : 'fields',
+        _aiRationale: g._aiRationale || '', // Preserve AI rationale
         fields: Array.isArray(g.fields) && g.fields.length
           ? g.fields.map(f => ({
               id: f.id || uuid4(),
@@ -1418,6 +1423,10 @@ createApp({
         group.fields.forEach(f => {
           existing.fields.push({ id: uuid4(), field: f.field, modifier: f.modifier || '', values: f.values || [''] });
         });
+        // Preserve rationale if not already set
+        if (group.rationale && !existing._aiRationale) {
+          existing._aiRationale = group.rationale;
+        }
         notify(`✓ Merged into group "${gName}"`);
       } else {
         // Add as new group
@@ -1429,6 +1438,7 @@ createApp({
           fields: group.fields.map(f => ({
             id: uuid4(), field: f.field, modifier: f.modifier || '', values: f.values || ['']
           })),
+          _aiRationale: group.rationale || '', // Store AI rationale as comment
         });
         notify(`✓ Added group "${gName}"`);
       }
